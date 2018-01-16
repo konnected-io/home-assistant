@@ -63,6 +63,7 @@ konnected:
               - zone: 5
                 type: motion
                 name: 'Master Bedroom Window'
+```
 
 ## Setup
 
