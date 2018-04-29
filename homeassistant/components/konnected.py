@@ -6,7 +6,6 @@ https://home-assistant.io/components/konnected/
 """
 import asyncio
 import logging
-import hmac
 import voluptuous as vol
 
 from aiohttp.hdrs import AUTHORIZATION
@@ -18,9 +17,15 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.const import (
     HTTP_BAD_REQUEST, HTTP_INTERNAL_SERVER_ERROR, HTTP_UNAUTHORIZED,
     CONF_DEVICES, CONF_SENSORS, CONF_SWITCHES, CONF_HOST, CONF_PORT,
-    CONF_ID, CONF_NAME, CONF_TYPE, CONF_PIN, CONF_ZONE, ATTR_STATE)
-from homeassistant.helpers import discovery
-from homeassistant.helpers import config_validation
+    CONF_ID, CONF_NAME, CONF_TYPE, CONF_PIN, CONF_ZONE, ATTR_STATE, ATTR_ENTITY_ID)
+from homeassistant.helpers import discovery, config_validation
+
+''' Entity based lookup for services'''
+from homeassistant.helpers.entity_component import EntityComponent
+from datetime import timedelta
+SCAN_INTERVAL = timedelta(seconds=30)
+GROUP_NAME_ALL_SWITCHES = 'all switches'
+ENTITY_ID_FORMAT = 'switch.{}'
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,40 +36,52 @@ DOMAIN = 'konnected'
 PIN_TO_ZONE = {1: 1, 2: 2, 5: 3, 6: 4, 7: 5, 8: 'out', 9: 6}
 ZONE_TO_PIN = {zone: pin for pin, zone in PIN_TO_ZONE.items()}
 
-_SENSOR_SCHEMA = vol.All(
-    vol.Schema({
-        vol.Exclusive(CONF_PIN, 's_pin'): vol.Any(*PIN_TO_ZONE),
-        vol.Exclusive(CONF_ZONE, 's_pin'): vol.Any(*ZONE_TO_PIN),
-        vol.Required(CONF_TYPE): DEVICE_CLASSES_SCHEMA,
-        vol.Optional(CONF_NAME): config_validation.string,
-    }), config_validation.has_at_least_one_key(CONF_PIN, CONF_ZONE)
-)
-
-_SWITCH_SCHEMA = vol.All(
-    vol.Schema({
-        vol.Exclusive(CONF_PIN, 'a_pin'): vol.Any(*PIN_TO_ZONE),
-        vol.Exclusive(CONF_ZONE, 'a_pin'): vol.Any(*ZONE_TO_PIN),
-        vol.Optional(CONF_NAME): config_validation.string,
-        vol.Optional('activation', default='high'):
-            vol.All(vol.Lower, vol.Any('high', 'low'))
-    }), config_validation.has_at_least_one_key(CONF_PIN, CONF_ZONE)
-)
-
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema({
             vol.Required('auth_token'): config_validation.string,
             vol.Required(CONF_DEVICES): [{
                 vol.Required(CONF_ID, default=''): config_validation.string,
-                vol.Optional(CONF_SENSORS): [_SENSOR_SCHEMA],
-                vol.Optional(CONF_SWITCHES): [_SWITCH_SCHEMA],
+                vol.Optional(CONF_SENSORS): [{
+                    vol.Exclusive(CONF_PIN, 's_pin'): vol.Any(*PIN_TO_ZONE),
+                    vol.Exclusive(CONF_ZONE, 's_pin'): vol.Any(*ZONE_TO_PIN),
+                    vol.Required(CONF_TYPE, default='motion'):
+                        DEVICE_CLASSES_SCHEMA,
+                    vol.Optional(CONF_NAME): config_validation.string,
+                }],
+                vol.Optional(CONF_SWITCHES): [{
+                    vol.Exclusive(CONF_PIN, 'a_pin'): vol.Any(*PIN_TO_ZONE),
+                    vol.Exclusive(CONF_ZONE, 'a_pin'): vol.Any(*ZONE_TO_PIN),
+                    vol.Optional(CONF_NAME): config_validation.string,
+                    vol.Required('activation', default='high'):
+                        vol.All(vol.Lower, vol.Any('high', 'low'))
+                }],
             }],
         }),
     },
     extra=vol.ALLOW_EXTRA,
 )
 
-DEPENDENCIES = ['http', 'discovery']
+SERVICE_BEEP_DEVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required('device_id'): config_validation.string,
+        vol.Required(CONF_PIN): vol.Any(*PIN_TO_ZONE),
+        vol.Optional('momentary'): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Optional('times'): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Optional('pause'): vol.All(vol.Coerce(int), vol.Range(min=0)),
+    }
+)
+
+SERVICE_BEEP_DEVICE_BY_ENTITY_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): config_validation.entity_ids,
+        vol.Optional('momentary'): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Optional('times'): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Optional('pause'): vol.All(vol.Coerce(int), vol.Range(min=0)),
+    }
+)
+
+DEPENDENCIES = ['http']
 
 ENDPOINT_ROOT = '/api/konnected'
 UPDATE_ENDPOINT = (
@@ -72,7 +89,8 @@ UPDATE_ENDPOINT = (
     r'/device/{device_id:[a-zA-Z0-9]+}/{pin_num:[0-9]}/{state:[01]}')
 
 
-async def async_setup(hass, config):
+@asyncio.coroutine
+def async_setup(hass, config):
     """Set up the Konnected platform."""
     cfg = config.get(DOMAIN)
     if cfg is None:
@@ -81,10 +99,11 @@ async def async_setup(hass, config):
     auth_token = cfg.get('auth_token')
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {'auth_token': auth_token}
-
-    async def async_device_discovered(service, info):
+        
+    @asyncio.coroutine
+    def async_device_discovered(service, info):
         """Call when a Konnected device has been discovered."""
-        _LOGGER.debug("Discovered a new Konnected device: %s", info)
+        _LOGGER.info("Discovered a new Konnected device: %s", info)
         host = info.get(CONF_HOST)
         port = info.get(CONF_PORT)
 
@@ -97,6 +116,81 @@ async def async_setup(hass, config):
         async_device_discovered)
 
     hass.http.register_view(KonnectedView(auth_token))
+
+    """Basic beep device service 
+        {"device_id":"ecfabc07e14b", "pin":7, "momentary":100, "times":3, "pause":100}
+    """
+    @asyncio.coroutine
+    def beep_device(call):
+        data = hass.data[DOMAIN]
+
+        #find device with matching entity name
+        device_id = call.data.get('device_id')
+        device = data[CONF_DEVICES].get(device_id)
+        if device is None:
+            _LOGGER.error("Invalid device id specified: %s", device_id)
+            return False
+        client = data[CONF_DEVICES][device_id]['client']
+        
+        device_pin = call.data.get(CONF_PIN)
+        #check if pin is valid switch
+        if device_pin not in data[CONF_DEVICES][device_id][CONF_SWITCHES]:
+            _LOGGER.error("Specified pin not configured: %s", device_pin)
+            return False
+        
+        flashcount = call.data.get('momentary', None)
+        times = call.data.get('times', None)
+        pause = call.data.get('pause', None)
+        
+        #def put_device(self, pin, state, momentary=None, times=None, pause=None):
+        #state 1 == ON
+        client.put_device(device_pin, 1, flashcount, times, pause)
+        
+    """Register Basic beep device service """
+    hass.services.async_register(DOMAIN, 'beepDevice', beep_device, schema=SERVICE_BEEP_DEVICE_SCHEMA)
+
+    """Entity based beep device service 
+        {"entity_id":"switch.Piezo", "momentary":100, "times":3, "pause":100}
+    """
+    @asyncio.coroutine
+    def beep_device_by_entity(call):
+        #FIXME - how to get drop down?
+        component = EntityComponent(_LOGGER, 'switch', hass, SCAN_INTERVAL, GROUP_NAME_ALL_SWITCHES)
+        target_switches = component.async_extract_from_service(call)
+        for switch in target_switches:
+            _LOGGER.info("Extracted switch name: %s", switch)
+        
+        data = hass.data[DOMAIN]
+
+        #get entity name from call - find hosting device
+        for entityId in call.data.get('entity_id'):
+            #_LOGGER.info("***Entity id: %s", entityId)
+            for device in data[CONF_DEVICES]:
+                for switch in data[CONF_DEVICES][device][CONF_SWITCHES]:
+                    kswitch = data[CONF_DEVICES][device][CONF_SWITCHES][switch]
+                    #_LOGGER.info("Device: %s; Configured switch name: %s", device, kswitch['name'])
+                    targetName = "switch." + kswitch['name'] 
+                    #_LOGGER.info("***Target name: %s", targetName)
+                    if ( targetName.lower() == entityId.lower() ):
+                        _LOGGER.info("Found switch %s on device: %s, at pin: %s", entityId, device, switch)
+                        
+                        #TODO
+                        client = data[CONF_DEVICES][device]['client']
+                        flashcount = call.data.get('momentary', None)
+                        times = call.data.get('times', None)
+                        pause = call.data.get('pause', None)
+        
+                        #def put_device(self, pin, state, momentary=None, times=None, pause=None):
+                        #state 1 == ON
+                        client.put_device(switch, 1, flashcount, times, pause)
+                        
+                        return True
+        
+        _LOGGER.error("Specified entity is not found as a Konnected device: %s", entityId)
+        return False
+                    
+    """Register Entity based beep device service """
+    hass.services.async_register(DOMAIN, 'beepDevice_ByEntityId', beep_device_by_entity, schema=SERVICE_BEEP_DEVICE_BY_ENTITY_SCHEMA)
 
     return True
 
@@ -120,9 +214,9 @@ class KonnectedDevice(object):
         """Set up a newly discovered Konnected device."""
         user_config = self.config()
         if user_config:
-            _LOGGER.debug('Configuring Konnected device %s', self.device_id)
+            _LOGGER.info('Configuring Konnected device %s', self.device_id)
             self.save_data()
-            self.hass.async_add_job(self.sync_device)
+            self.sync_device()
             self.hass.async_add_job(
                 discovery.async_load_platform(
                     self.hass, 'binary_sensor',
@@ -173,9 +267,9 @@ class KonnectedDevice(object):
                     self.device_id[6:], PIN_TO_ZONE[pin])),
                 ATTR_STATE: initial_state
             }
-            _LOGGER.debug('Set up sensor %s (initial state: %s)',
-                          sensors[pin].get('name'),
-                          sensors[pin].get(ATTR_STATE))
+            _LOGGER.info('Set up sensor %s (initial state: %s)',
+                         sensors[pin].get('name'),
+                         sensors[pin].get(ATTR_STATE))
 
         actuators = {}
         for entity in self.config().get(CONF_SWITCHES) or []:
@@ -199,9 +293,9 @@ class KonnectedDevice(object):
                 ATTR_STATE: initial_state,
                 'activation': entity['activation'],
             }
-            _LOGGER.debug('Set up actuator %s (initial state: %s)',
-                          actuators[pin].get(CONF_NAME),
-                          actuators[pin].get(ATTR_STATE))
+            _LOGGER.info('Set up actuator %s (initial state: %s)',
+                         actuators[pin].get(CONF_NAME),
+                         actuators[pin].get(ATTR_STATE))
 
         device_data = {
             'client': self.client,
@@ -211,10 +305,10 @@ class KonnectedDevice(object):
             CONF_PORT: self.port,
         }
 
-        if CONF_DEVICES not in self.hass.data[DOMAIN]:
+        if 'devices' not in self.hass.data[DOMAIN]:
             self.hass.data[DOMAIN][CONF_DEVICES] = {}
 
-        _LOGGER.debug('Storing data in hass.data[konnected]: %s', device_data)
+        _LOGGER.info('Storing data in hass.data[konnected]: %s', device_data)
         self.hass.data[DOMAIN][CONF_DEVICES][self.device_id] = device_data
 
     @property
@@ -239,21 +333,21 @@ class KonnectedDevice(object):
         desired_sensor_configuration = self.sensor_configuration()
         current_sensor_configuration = [
             {'pin': s[CONF_PIN]} for s in self.status.get('sensors')]
-        _LOGGER.debug('%s: desired sensor config: %s', self.device_id,
-                      desired_sensor_configuration)
-        _LOGGER.debug('%s: current sensor config: %s', self.device_id,
-                      current_sensor_configuration)
+        _LOGGER.info('%s: desired sensor config: %s', self.device_id,
+                     desired_sensor_configuration)
+        _LOGGER.info('%s: current sensor config: %s', self.device_id,
+                     current_sensor_configuration)
 
         desired_actuator_config = self.actuator_configuration()
         current_actuator_config = self.status.get('actuators')
-        _LOGGER.debug('%s: desired actuator config: %s', self.device_id,
-                      desired_actuator_config)
-        _LOGGER.debug('%s: current actuator config: %s', self.device_id,
-                      current_actuator_config)
+        _LOGGER.info('%s: desired actuator config: %s', self.device_id,
+                     desired_actuator_config)
+        _LOGGER.info('%s: current actuator config: %s', self.device_id,
+                     current_actuator_config)
 
         if (desired_sensor_configuration != current_sensor_configuration) or \
                 (current_actuator_config != desired_actuator_config):
-            _LOGGER.debug('pushing settings to device %s', self.device_id)
+            _LOGGER.info('pushing settings to device %s', self.device_id)
             self.client.put_settings(
                 desired_sensor_configuration,
                 desired_actuator_config,
@@ -280,7 +374,7 @@ class KonnectedView(HomeAssistantView):
         data = hass.data[DOMAIN]
 
         auth = request.headers.get(AUTHORIZATION, None)
-        if not hmac.compare_digest('Bearer {}'.format(self.auth_token), auth):
+        if 'Bearer {}'.format(self.auth_token) != auth:
             return self.json_message(
                 "unauthorized", status_code=HTTP_UNAUTHORIZED)
         pin_num = int(pin_num)

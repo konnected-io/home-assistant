@@ -395,18 +395,6 @@ snips:
       intent_filter:
         description: Optional Array of Strings - A list of intents names to restrict the NLU resolution to on the first query.
         example: turnOnLights, turnOffLights
-  feedback_on:
-    description: Turns feedback sounds on.
-    fields:
-      site_id:
-        description: Site to turn sounds on, defaults to all sites (optional)
-        example: bedroom
-  feedback_off:
-    description: Turns feedback sounds off.
-    fields:
-      site_id:
-        description: Site to turn sounds on, defaults to all sites (optional)
-        example: bedroom
 
 input_boolean:
   toggle:
@@ -556,3 +544,40 @@ xiaomi_aqara:
       device_id:
         description: Hardware address of the device to remove.
         example: 158d0000000000
+
+konnected:
+  #{"device_id":"34ce00880088", "pin":7, "momentary":100, "times":3, "pause":100}
+  beepdevice:
+    description: Beep (turn on) specified device.
+    fields:
+        device_id:
+            description: MAC address of Konnected board hosting device.
+            example: '34ce00880088'
+        pin:
+            description: Pin number on board of device.
+            example: 7
+        momentary:
+            description: Milliseconds for the device to be turned on. (Optional, default = 1)
+            example: 100
+        times:
+            description: Number of times to turn the device on. (Optional, default = 1)
+            example: 3
+        pause:
+            description: Milliseconds to pause between turning on/off (Optional, default = 0)
+            example: 100
+  #{"entity_id":"switch.buzzer", "momentary":100, "times":3, "pause":100}
+  beepdevice_byentityid:
+    description: Beep (turn on) specified entity(s).  The entity must be a switch.  Will search for matching name across all known Konnected boards.
+    fields:
+        entity_id:
+            description: Entity id of device to be turned on.
+            example: 'switch.buzzer'
+        momentary:
+            description: Milliseconds for the device to be turned on. (Optional, default = 1)
+            example: 100
+        times:
+            description: Number of times to turn the device on. (Optional, default = 1)
+            example: 3
+        pause:
+            description: Milliseconds to pause between turning on/off (Optional, default = 0)
+            example: 100
