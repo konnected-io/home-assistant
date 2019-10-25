@@ -4,7 +4,7 @@ import logging
 from homeassistant.const import (
     CONF_DEVICES,
     CONF_NAME,
-    CONF_PIN,
+    CONF_ZONE,
     CONF_SENSORS,
     CONF_TYPE,
     DEVICE_CLASS_HUMIDITY,
@@ -53,7 +53,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             (
                 s
                 for s in data[CONF_DEVICES][device_id][CONF_SENSORS]
-                if s[CONF_TYPE] == "ds18b20" and s[CONF_PIN] == attrs.get(CONF_PIN)
+                if s[CONF_TYPE] == "ds18b20" and s[CONF_ZONE] == attrs.get(CONF_ZONE)
             ),
             None,
         )
@@ -85,10 +85,10 @@ class KonnectedSensor(Entity):
         self._data = data
         self._device_id = device_id
         self._type = sensor_type
-        self._pin_num = self._data.get(CONF_PIN)
+        self._zone_num = self._data.get(CONF_ZONE)
         self._unit_of_measurement = SENSOR_TYPES[sensor_type][1]
         self._unique_id = addr or "{}-{}-{}".format(
-            device_id, self._pin_num, sensor_type
+            device_id, self._zone_num, sensor_type
         )
 
         # set initial state if known at initialization

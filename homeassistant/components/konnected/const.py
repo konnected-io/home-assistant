@@ -18,8 +18,7 @@ CONF_DS18B20_SENSORS = "ds18b20_sensors"
 STATE_LOW = "low"
 STATE_HIGH = "high"
 
-PIN_TO_ZONE = {1: 1, 2: 2, 5: 3, 6: 4, 7: 5, 8: "out", 9: 6}
-ZONE_TO_PIN = {zone: pin for pin, zone in PIN_TO_ZONE.items()}
+ZONES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, "alarm1", "alarm2", "out1", "out2"]
 
 ENDPOINT_ROOT = "/api/konnected"
 UPDATE_ENDPOINT = ENDPOINT_ROOT + r"/device/{device_id:[a-zA-Z0-9]+}"
