@@ -51,7 +51,12 @@ from .const import (
     DOMAIN,
     # PIN_TO_ZONE,
     STATE_HIGH,
+<<<<<<< HEAD
     STATE_LOW,
+=======
+    ZONES,
+    ENDPOINT_ROOT,
+>>>>>>> fix formatting
     UPDATE_ENDPOINT,
     # ZONE_TO_PIN,
     ZONES,
