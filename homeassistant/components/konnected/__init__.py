@@ -470,7 +470,7 @@ class KonnectedView(HomeAssistantView):
     async def get(self, request: Request, device_id) -> Response:
         """Return the current binary state of a switch."""
         hass = request.app["hass"]
-        zone_num = int(request.query.get("zone"))
+        zone_num = request.query.get("zone")
         data = hass.data[DOMAIN]
 
         device = data[CONF_DEVICES][device_id]
