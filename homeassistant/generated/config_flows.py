@@ -42,6 +42,7 @@ FLOWS = [
     "ipma",
     "iqvia",
     "izone",
+    "konnected",
     "life360",
     "lifx",
     "linky",
