@@ -25,10 +25,10 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up binary sensors attached to a Konnected device from a config entry."""
-    device_id = config_entry.data["device_id"]
+    device_id = config_entry.data["id"]
     sensors = [
         KonnectedBinarySensor(device_id, zone_data.get(CONF_ZONE), zone_data)
-        for zone_data in config_entry.options[CONF_BINARY_SENSORS]
+        for zone_data in config_entry.data[CONF_BINARY_SENSORS]
     ]
     async_add_entities(sensors)
 
