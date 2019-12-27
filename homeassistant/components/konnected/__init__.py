@@ -190,8 +190,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up panel from a config entry."""
-    hass.data[DOMAIN][CONF_DEVICES][entry.data[CONF_ID]] = AlarmPanel(hass, entry)
-
+    AlarmPanel(hass, entry).save_data()
     for component in PLATFORMS:
         hass.async_create_task(
             hass.config_entries.async_forward_entry_setup(entry, component)
@@ -211,8 +210,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         )
     )
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-        hass.data[DOMAIN][CONF_DEVICES].pop(entry.data.device_id)
+        hass.data[DOMAIN][CONF_DEVICES].pop(entry.data[CONF_ID])
 
     return unload_ok
 
