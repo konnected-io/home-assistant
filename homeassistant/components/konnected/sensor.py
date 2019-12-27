@@ -2,9 +2,8 @@
 import logging
 
 from homeassistant.const import (
-    CONF_DEVICES,
     CONF_NAME,
-    CONF_PIN,
+    CONF_ZONE,
     CONF_SENSORS,
     CONF_TYPE,
     DEVICE_CLASS_HUMIDITY,
@@ -15,7 +14,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
 
-from .const import DOMAIN as KONNECTED_DOMAIN, SIGNAL_DS18B20_NEW, SIGNAL_SENSOR_UPDATE
+from .const import SIGNAL_DS18B20_NEW, SIGNAL_SENSOR_UPDATE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,17 +26,18 @@ SENSOR_TYPES = {
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up sensors attached to a Konnected device."""
-    if discovery_info is None:
-        return
+    pass
 
-    data = hass.data[KONNECTED_DOMAIN]
-    device_id = discovery_info["device_id"]
+
+async def async_setup_entry(hass, config_entry, async_add_entities):
+    """Set up sensors attached to a Konnected device from a config entry."""
+    device_id = config_entry.data["device_id"]
     sensors = []
 
     # Initialize all DHT sensors.
     dht_sensors = [
         sensor
-        for sensor in data[CONF_DEVICES][device_id][CONF_SENSORS]
+        for sensor in config_entry.options[CONF_SENSORS]
         if sensor[CONF_TYPE] == "dht"
     ]
     for sensor in dht_sensors:
@@ -52,8 +52,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         sensor_config = next(
             (
                 s
-                for s in data[CONF_DEVICES][device_id][CONF_SENSORS]
-                if s[CONF_TYPE] == "ds18b20" and s[CONF_PIN] == attrs.get(CONF_PIN)
+                for s in config_entry.options[CONF_SENSORS]
+                if s[CONF_TYPE] == "ds18b20" and s[CONF_ZONE] == attrs.get(CONF_ZONE)
             ),
             None,
         )
@@ -85,10 +85,10 @@ class KonnectedSensor(Entity):
         self._data = data
         self._device_id = device_id
         self._type = sensor_type
-        self._pin_num = self._data.get(CONF_PIN)
+        self._zone_num = self._data.get(CONF_ZONE)
         self._unit_of_measurement = SENSOR_TYPES[sensor_type][1]
         self._unique_id = addr or "{}-{}-{}".format(
-            device_id, self._pin_num, sensor_type
+            device_id, self._zone_num, sensor_type
         )
 
         # set initial state if known at initialization

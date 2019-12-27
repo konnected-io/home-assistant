@@ -27,6 +27,11 @@ SSDP = {
             "manufacturer": "Royal Philips Electronics"
         }
     ],
+    "konnected": [
+        {
+            "manufacturer": "konnected.io"
+        }
+    ],
     "sonos": [
         {
             "st": "urn:schemas-upnp-org:device:ZonePlayer:1"
