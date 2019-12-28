@@ -69,14 +69,7 @@ class AlarmPanel:
         return self.hass.data[DOMAIN][CONF_DEVICES].get(self.device_id)
 
     async def async_setup(self):
-        """Set up a newly discovered Konnected device."""
-        _LOGGER.info(
-            "Discovered Konnected device %s. Open http://%s:%s in a "
-            "web browser to view device status.",
-            self.device_id,
-            self.host,
-            self.port,
-        )
+        """Connect to and setup a Konnected device."""
         try:
             import konnected
 
@@ -88,6 +81,14 @@ class AlarmPanel:
 
         except Exception:
             raise CannotConnect
+
+        _LOGGER.info(
+            "Set up Konnected device %s. Open http://%s:%s in a "
+            "web browser to view device status.",
+            self.device_id,
+            self.host,
+            self.port,
+        )
 
         device_registry = await dr.async_get_registry(self.hass)
 
@@ -166,6 +167,9 @@ class AlarmPanel:
             CONF_SWITCHES: actuators,
             CONF_BLINK: self.config.get(CONF_BLINK),
             CONF_DISCOVERY: self.config.get(CONF_DISCOVERY),
+            CONF_HOST: self.host,
+            CONF_PORT: self.port,
+            "client": self.client,
         }
 
         if CONF_DEVICES not in self.hass.data[DOMAIN]:
@@ -230,7 +234,7 @@ class AlarmPanel:
     def desired_settings_payload(self):
         """Return a dict representing the desired device configuration."""
         desired_api_host = (
-            self.config.get(CONF_API_HOST) or self.hass.config.api.base_url
+            self.hass.data[DOMAIN].get(CONF_API_HOST) or self.hass.config.api.base_url
         )
         desired_api_endpoint = desired_api_host + ENDPOINT_ROOT
 

@@ -10,7 +10,6 @@ from aiohttp.hdrs import AUTHORIZATION
 from aiohttp.web import Request, Response
 import voluptuous as vol
 
-from homeassistant.components.binary_sensor import DEVICE_CLASSES_SCHEMA
 from homeassistant.components.http import HomeAssistantView
 from homeassistant import config_entries
 from homeassistant.const import (
@@ -18,13 +17,9 @@ from homeassistant.const import (
     CONF_ACCESS_TOKEN,
     CONF_BINARY_SENSORS,
     CONF_DEVICES,
-    CONF_HOST,
     CONF_ID,
-    CONF_NAME,
-    CONF_PORT,
     CONF_SENSORS,
     CONF_SWITCHES,
-    CONF_TYPE,
     CONF_ZONE,
     HTTP_BAD_REQUEST,
     HTTP_NOT_FOUND,
@@ -36,25 +31,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
 from .config_flow import (
-    configured_hosts,
+    configured_devices,
+    DEVICE_SCHEMA,
 )  # Loading the config flow file will register the flow
 from .const import (
     CONF_ACTIVATION,
     CONF_API_HOST,
-    CONF_BLINK,
-    CONF_DISCOVERY,
-    CONF_INVERSE,
-    CONF_MOMENTARY,
-    CONF_PAUSE,
-    CONF_POLL_INTERVAL,
-    CONF_REPEAT,
     DOMAIN,
-    # PIN_TO_ZONE,
     STATE_HIGH,
-    STATE_LOW,
     UPDATE_ENDPOINT,
-    # ZONE_TO_PIN,
-    ZONES,
 )
 from .errors import CannotConnect
 from .handlers import HANDLERS
@@ -62,47 +47,6 @@ from .panel import AlarmPanel
 
 _LOGGER = logging.getLogger(__name__)
 
-_BINARY_SENSOR_SCHEMA = vol.All(
-    vol.Schema(
-        {
-            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
-            vol.Required(CONF_ZONE): vol.In(ZONES),
-            vol.Required(CONF_TYPE): DEVICE_CLASSES_SCHEMA,
-            vol.Optional(CONF_NAME): cv.string,
-            vol.Optional(CONF_INVERSE, default=False): cv.boolean,
-        }
-    )
-)
-
-_SENSOR_SCHEMA = vol.All(
-    vol.Schema(
-        {
-            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
-            vol.Required(CONF_ZONE): vol.In(ZONES),
-            vol.Required(CONF_TYPE): vol.All(vol.Lower, vol.In(["dht", "ds18b20"])),
-            vol.Optional(CONF_NAME): cv.string,
-            vol.Optional(CONF_POLL_INTERVAL): vol.All(
-                vol.Coerce(int), vol.Range(min=1)
-            ),
-        }
-    )
-)
-
-_SWITCH_SCHEMA = vol.All(
-    vol.Schema(
-        {
-            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
-            vol.Required(CONF_ZONE): vol.In(ZONES),
-            vol.Optional(CONF_NAME): cv.string,
-            vol.Optional(CONF_ACTIVATION, default=STATE_HIGH): vol.All(
-                vol.Lower, vol.Any(STATE_HIGH, STATE_LOW)
-            ),
-            vol.Optional(CONF_MOMENTARY): vol.All(vol.Coerce(int), vol.Range(min=10)),
-            vol.Optional(CONF_PAUSE): vol.All(vol.Coerce(int), vol.Range(min=10)),
-            vol.Optional(CONF_REPEAT): vol.All(vol.Coerce(int), vol.Range(min=-1)),
-        }
-    )
-)
 
 # pylint: disable=no-value-for-parameter
 CONFIG_SCHEMA = vol.Schema(
@@ -111,24 +55,7 @@ CONFIG_SCHEMA = vol.Schema(
             {
                 vol.Required(CONF_ACCESS_TOKEN): cv.string,
                 vol.Optional(CONF_API_HOST): vol.Url(),
-                vol.Optional(CONF_DEVICES): [
-                    {
-                        vol.Required(CONF_ID): cv.matches_regex("[0-9a-f]{12}"),
-                        vol.Optional(CONF_BINARY_SENSORS): vol.All(
-                            cv.ensure_list, [_BINARY_SENSOR_SCHEMA]
-                        ),
-                        vol.Optional(CONF_SENSORS): vol.All(
-                            cv.ensure_list, [_SENSOR_SCHEMA]
-                        ),
-                        vol.Optional(CONF_SWITCHES): vol.All(
-                            cv.ensure_list, [_SWITCH_SCHEMA]
-                        ),
-                        vol.Optional(CONF_HOST): cv.string,
-                        vol.Optional(CONF_PORT): cv.port,
-                        vol.Optional(CONF_BLINK, default=True): cv.boolean,
-                        vol.Optional(CONF_DISCOVERY, default=True): cv.boolean,
-                    }
-                ],
+                vol.Optional(CONF_DEVICES): [DEVICE_SCHEMA],
             }
         )
     },
@@ -160,16 +87,13 @@ async def async_setup(hass: HomeAssistant, config: dict):
     if CONF_DEVICES not in cfg:
         return True
 
-    configured = configured_hosts(hass)
+    configured = configured_devices(hass)
     devices = cfg[CONF_DEVICES]
 
     if devices:
-        # Store config in hass.data so the config entry can find it
-        hass.data[DOMAIN][YAML_CONFIGS] = devices
-
         for device in devices:
-            # If configured, the panel will be set up during config entry phase
-            if device.get("host") in configured:
+            # If configured, the panel is already imported and needs to be managed via config entries
+            if device["id"] in configured:
                 continue
 
             # No existing config entry found, try importing it. Use

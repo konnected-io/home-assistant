@@ -4,20 +4,44 @@ import copy
 import logging
 from collections import OrderedDict
 import voluptuous as vol
+from voluptuous.humanize import humanize_error
 
 from homeassistant import config_entries
 from homeassistant.const import (
+    CONF_BINARY_SENSORS,
     CONF_HOST,
     CONF_ID,
+    CONF_NAME,
+    CONF_PORT,
+    CONF_SENSORS,
+    CONF_SWITCHES,
+    CONF_TYPE,
+    CONF_ZONE,
 )
+
 from homeassistant.core import callback
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_DOOR,
     DEVICE_CLASSES as BIN_SENS_TYPES,
+    DEVICE_CLASSES_SCHEMA,
 )
+from homeassistant.helpers import config_validation as cv
 
 from .errors import CannotConnect
-from .const import DOMAIN  # pylint:disable=unused-import
+from .const import (
+    CONF_ACTIVATION,
+    CONF_BLINK,
+    CONF_DISCOVERY,
+    CONF_INVERSE,
+    CONF_MOMENTARY,
+    CONF_PAUSE,
+    CONF_POLL_INTERVAL,
+    CONF_REPEAT,
+    DOMAIN,
+    STATE_HIGH,
+    STATE_LOW,
+    ZONES,
+)
 from .panel import get_status
 
 _LOGGER = logging.getLogger(__name__)
@@ -149,12 +173,69 @@ DATA_SCHEMA_OPTIONS = {
     "Switch": DATA_SCHEMA_SWITCH_OPTIONS,
 }
 
+BINARY_SENSOR_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
+            vol.Required(CONF_ZONE): vol.In(ZONES),
+            vol.Required(CONF_TYPE): DEVICE_CLASSES_SCHEMA,
+            vol.Optional(CONF_NAME): cv.string,
+            vol.Optional(CONF_INVERSE, default=False): cv.boolean,
+        }
+    )
+)
+
+SENSOR_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
+            vol.Required(CONF_ZONE): vol.In(ZONES),
+            vol.Required(CONF_TYPE): vol.All(vol.Lower, vol.In(["dht", "ds18b20"])),
+            vol.Optional(CONF_NAME): cv.string,
+            vol.Optional(CONF_POLL_INTERVAL): vol.All(
+                vol.Coerce(int), vol.Range(min=1)
+            ),
+        }
+    )
+)
+
+SWITCH_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
+            vol.Required(CONF_ZONE): vol.In(ZONES),
+            vol.Optional(CONF_NAME): cv.string,
+            vol.Optional(CONF_ACTIVATION, default=STATE_HIGH): vol.All(
+                vol.Lower, vol.Any(STATE_HIGH, STATE_LOW)
+            ),
+            vol.Optional(CONF_MOMENTARY): vol.All(vol.Coerce(int), vol.Range(min=10)),
+            vol.Optional(CONF_PAUSE): vol.All(vol.Coerce(int), vol.Range(min=10)),
+            vol.Optional(CONF_REPEAT): vol.All(vol.Coerce(int), vol.Range(min=-1)),
+        }
+    )
+)
+
+DEVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ID): cv.matches_regex("[0-9a-f]{12}"),
+        vol.Optional(CONF_BINARY_SENSORS): vol.All(
+            cv.ensure_list, [BINARY_SENSOR_SCHEMA]
+        ),
+        vol.Optional(CONF_SENSORS): vol.All(cv.ensure_list, [SENSOR_SCHEMA]),
+        vol.Optional(CONF_SWITCHES): vol.All(cv.ensure_list, [SWITCH_SCHEMA]),
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_PORT): cv.port,
+        vol.Optional(CONF_BLINK, default=True): cv.boolean,
+        vol.Optional(CONF_DISCOVERY, default=True): cv.boolean,
+    }
+)
+
 
 @callback
 def configured_hosts(hass):
     """Return a set of the configured hosts."""
     return set(
-        entry.data["host"] for entry in hass.config_entries.async_entries(DOMAIN)
+        entry.data.get("host") for entry in hass.config_entries.async_entries(DOMAIN)
     )
 
 
@@ -437,6 +518,15 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         If an existing config file is found, we will validate the info
         and create an entry. Otherwise we will create a new one.
         """
+        try:
+            DEVICE_SCHEMA(import_info)
+
+        except vol.Invalid as err:
+            _LOGGER.error(
+                "Cannot import config..%s", humanize_error(import_info, err),
+            )
+            return self.async_abort(reason="unknown")
+
         device_id = import_info[CONF_ID]
         host = import_info.get(CONF_HOST)
 
