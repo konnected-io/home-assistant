@@ -14,7 +14,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
 
-from .const import SIGNAL_DS18B20_NEW, SIGNAL_SENSOR_UPDATE
+from .const import SIGNAL_DS18B20_NEW, SIGNAL_SENSOR_UPDATE, DOMAIN as KONNECTED_DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,6 +120,13 @@ class KonnectedSensor(Entity):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return self._unit_of_measurement
+
+    @property
+    def device_info(self):
+        """Return the device info."""
+        return {
+            "identifiers": {(KONNECTED_DOMAIN, self._device_id)},
+        }
 
     async def async_added_to_hass(self):
         """Store entity_id and register state change callback."""

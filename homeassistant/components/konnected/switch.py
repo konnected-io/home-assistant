@@ -78,6 +78,13 @@ class KonnectedSwitch(ToggleEntity):
             "client"
         )
 
+    @property
+    def device_info(self):
+        """Return the device info."""
+        return {
+            "identifiers": {(KONNECTED_DOMAIN, self._device_id)},
+        }
+
     def turn_on(self, **kwargs):
         """Send a command to turn on the switch."""
         resp = self.client.put_device(

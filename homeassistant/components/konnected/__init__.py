@@ -61,6 +61,7 @@ from .const import (
     # ZONE_TO_PIN,
     ZONES,
 )
+from .errors import CannotConnect
 from .handlers import HANDLERS
 from .panel import AlarmPanel
 
@@ -190,11 +191,16 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up panel from a config entry."""
-    AlarmPanel(hass, entry).save_data()
-    for component in PLATFORMS:
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(entry, component)
-        )
+    try:
+        await AlarmPanel(hass, entry).async_setup()
+        for component in PLATFORMS:
+            hass.async_create_task(
+                hass.config_entries.async_forward_entry_setup(entry, component)
+            )
+
+    except CannotConnect:
+        # this will trigger a retry in the future
+        raise config_entries.ConfigEntryNotReady
 
     return True
 

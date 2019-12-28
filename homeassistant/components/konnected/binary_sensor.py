@@ -13,7 +13,7 @@ from homeassistant.const import (
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import SIGNAL_SENSOR_UPDATE
+from .const import SIGNAL_SENSOR_UPDATE, DOMAIN as KONNECTED_DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +70,13 @@ class KonnectedBinarySensor(BinarySensorDevice):
     def device_class(self):
         """Return the device class."""
         return self._device_class
+
+    @property
+    def device_info(self):
+        """Return the device info."""
+        return {
+            "identifiers": {(KONNECTED_DOMAIN, self._device_id)},
+        }
 
     async def async_added_to_hass(self):
         """Store entity_id and register state change callback."""
