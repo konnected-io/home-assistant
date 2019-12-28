@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from homeassistant.setup import async_setup_component
 from homeassistant.components import konnected
+from homeassistant.components.konnected import config_flow
 
 from tests.common import mock_coro, MockConfigEntry
 
@@ -10,7 +11,7 @@ from tests.common import mock_coro, MockConfigEntry
 async def test_setup_with_no_config(hass):
     """Test that we do not discover anything or try to set up a Konnected panel."""
     with patch.object(hass, "config_entries") as mock_config_entries, patch.object(
-        konnected, "configured_hosts", return_value=[]
+        konnected, "configured_devices", return_value=[]
     ):
         assert await async_setup_component(hass, konnected.DOMAIN, {}) is True
 
@@ -26,7 +27,7 @@ async def test_setup_with_no_config(hass):
 async def test_setup_defined_hosts_known_auth(hass):
     """Test we don't initiate a config entry if configured panel is known."""
     with patch.object(hass, "config_entries") as mock_config_entries, patch.object(
-        konnected, "configured_hosts", return_value=["0.0.0.0"]
+        konnected, "configured_devices", return_value=["aabbccddeeff", "112233445566"]
     ):
         assert (
             await async_setup_component(
@@ -37,8 +38,8 @@ async def test_setup_defined_hosts_known_auth(hass):
                         konnected.CONF_ACCESS_TOKEN: "abcdefgh",
                         konnected.CONF_DEVICES: [
                             {
-                                konnected.CONF_ID: "aabbccddeeff",
-                                konnected.CONF_HOST: "0.0.0.0",
+                                config_flow.CONF_ID: "aabbccddeeff",
+                                config_flow.CONF_HOST: "0.0.0.0",
                             },
                         ],
                     }
@@ -50,16 +51,11 @@ async def test_setup_defined_hosts_known_auth(hass):
     # Flow started for discovered panel
     assert len(mock_config_entries.flow.mock_calls) == 0
 
-    # Config stored for domain - a copy of the devices list
-    assert hass.data[konnected.DOMAIN][konnected.YAML_CONFIGS] == [
-        {"id": "aabbccddeeff", "host": "0.0.0.0", "blink": True, "discovery": True},
-    ]
-
 
 async def test_setup_defined_hosts_no_known_auth(hass):
     """Test we initiate config entry if config panel is not known."""
     with patch.object(hass, "config_entries") as mock_config_entries, patch.object(
-        konnected, "configured_hosts", return_value=[]
+        konnected, "configured_devices", return_value=[]
     ):
         mock_config_entries.flow.async_init.return_value = mock_coro()
         assert (
@@ -79,22 +75,17 @@ async def test_setup_defined_hosts_no_known_auth(hass):
     # Flow started for discovered bridge
     assert len(mock_config_entries.flow.mock_calls) == 1
     assert mock_config_entries.flow.mock_calls[0][2]["data"] == {
-        konnected.CONF_ID: "aabbccddeeff",
-        konnected.CONF_BLINK: True,
-        konnected.CONF_DISCOVERY: True,
+        config_flow.CONF_ID: "aabbccddeeff",
+        config_flow.CONF_BLINK: True,
+        config_flow.CONF_DISCOVERY: True,
     }
-
-    # Config stored for domain.
-    assert hass.data[konnected.DOMAIN][konnected.YAML_CONFIGS] == [
-        {"id": "aabbccddeeff", "blink": True, "discovery": True},
-    ]
 
 
 async def test_config_passed_to_config_entry(hass):
     """Test that configured options for a host are loaded via config entry."""
     entry = MockConfigEntry(
         domain=konnected.DOMAIN,
-        data={konnected.CONF_ID: "aabbccddeeff", konnected.CONF_HOST: "0.0.0.0"},
+        data={config_flow.CONF_ID: "aabbccddeeff", config_flow.CONF_HOST: "0.0.0.0"},
     )
     entry.add_to_hass(hass)
     with patch.object(konnected, "AlarmPanel") as mock_panel:

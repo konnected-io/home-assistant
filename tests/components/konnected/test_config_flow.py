@@ -270,15 +270,37 @@ async def test_ssdp_already_configured(hass):
 
 async def test_ssdp_host_update(hass):
     """Test if a discovered panel has already been configured but changed host."""
-    MockConfigEntry(
-        domain="konnected",
-        data={
-            "host": "0.0.0.0",
-            "port": "1111",
+    device_config = config_flow.DEVICE_SCHEMA(
+        {
+            "host": "1.2.3.4",
+            "port": 1234,
             "id": "112233445566",
-            "existing": "param",
-        },
-    ).add_to_hass(hass)
+            "binary_sensors": [
+                {"zone": "2", "type": "door"},
+                {"zone": "6", "type": "window", "name": "winder", "inverse": True},
+                {"zone": "10", "type": "door"},
+            ],
+            "sensors": [
+                {"zone": "3", "type": "dht"},
+                {"zone": "7", "type": "ds18b20", "name": "temper"},
+                {"zone": "11", "type": "dht"},
+            ],
+            "switches": [
+                {"zone": "4"},
+                {
+                    "zone": "8",
+                    "name": "switcher",
+                    "activation": "low",
+                    "momentary": 50,
+                    "pause": 100,
+                    "repeat": 4,
+                },
+                {"zone": "out1"},
+                {"zone": "alarm1"},
+            ],
+        }
+    )
+    MockConfigEntry(domain="konnected", data=device_config).add_to_hass(hass)
     flow = config_flow.KonnectedFlowHandler()
     flow.hass = hass
     flow.context = {}
@@ -299,7 +321,7 @@ async def test_ssdp_host_update(hass):
 
         result = await flow.async_step_ssdp(
             {
-                "host": "1.2.3.4",
+                "host": "1.1.1.1",
                 "port": "1234",
                 "manufacturer": config_flow.KONN_MANUFACTURER,
                 "model_name": config_flow.KONN_MODEL_PRO,
@@ -307,11 +329,13 @@ async def test_ssdp_host_update(hass):
         )
 
     assert result["type"] == "create_entry"
-    assert result["data"] == {
-        "host": "1.2.3.4",
-        "port": "1234",
-        "id": "112233445566",
-        "existing": "param",
+    assert result["data"]["host"] == "1.1.1.1"
+    assert result["data"]["port"] == "1234"
+    assert result["data"]["id"] == "112233445566"
+    assert result["data"]["binary_sensors"][0] == {
+        "inverse": False,
+        "type": "door",
+        "zone": "2",
     }
 
 

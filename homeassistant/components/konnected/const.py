@@ -18,7 +18,23 @@ CONF_DS18B20_SENSORS = "ds18b20_sensors"
 STATE_LOW = "low"
 STATE_HIGH = "high"
 
-ZONES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, "alarm1", "out1", "alarm2_out2"]
+ZONES = [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "alarm1",
+    "out1",
+    "alarm2_out2",
+]
 
 ENDPOINT_ROOT = "/api/konnected"
 UPDATE_ENDPOINT = ENDPOINT_ROOT + r"/device/{device_id:[a-zA-Z0-9]+}"

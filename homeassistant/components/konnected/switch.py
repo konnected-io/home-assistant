@@ -10,7 +10,7 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.entity import ToggleEntity
 
-from . import (
+from .const import (
     CONF_ACTIVATION,
     CONF_MOMENTARY,
     CONF_PAUSE,
