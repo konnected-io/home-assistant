@@ -1,10 +1,11 @@
 """Config flow for konnected.io integration."""
 import asyncio
+import copy
 import logging
 from collections import OrderedDict
 import voluptuous as vol
 
-from homeassistant import config_entries, exceptions
+from homeassistant import config_entries
 from homeassistant.const import (
     CONF_HOST,
     CONF_ID,
@@ -15,7 +16,9 @@ from homeassistant.components.binary_sensor import (
     DEVICE_CLASSES as BIN_SENS_TYPES,
 )
 
+from .errors import CannotConnect
 from .const import DOMAIN  # pylint:disable=unused-import
+from .panel import get_status
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -155,17 +158,25 @@ def configured_hosts(hass):
     )
 
 
+@callback
+def configured_devices(hass):
+    """Return a set of the configured devices."""
+    return set(entry.data["id"] for entry in hass.config_entries.async_entries(DOMAIN))
+
+
 class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for NEW_NAME."""
 
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
 
+    # pylint: disable=no-member # https://github.com/PyCQA/pylint/issues/3167
+
     def __init__(self):
         """Initialize the Hue flow."""
         self.host = None
         self.port = None
-        self.model = None
+        self.model = "Konnected"
         self.device_id = None
 
         self.io_cfg = {}
@@ -174,17 +185,20 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.switches = []
         self.active_cfg = None
 
+    async def async_step_init(self, user_input=None):
+        """Needed in order to not require re-translation of strings."""
+        return await self.async_step_user(user_input)
+
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
         if user_input is not None:
             try:
-                # try to obtain the mac address from the device
-                import konnected
-
                 self.host = user_input["host"]
                 self.port = user_input["port"]
-                status = konnected.Client(self.host, str(self.port)).get_status()
+
+                # try to obtain the mac address from the device
+                status = get_status(self.host, self.port)
                 self.device_id = status.get("mac").replace(":", "")
                 self.model = status.get("name", "Konnected")
                 return await self.async_step_io()
@@ -205,7 +219,6 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         from homeassistant.components.ssdp import ATTR_MANUFACTURER, ATTR_MODEL_NAME
 
-        _LOGGER.error(discovery_info)
         if discovery_info[ATTR_MANUFACTURER] != KONN_MANUFACTURER:
             return self.async_abort(reason="not_konn_panel")
 
@@ -216,9 +229,8 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="not_konn_panel")
 
         self.model = discovery_info[ATTR_MODEL_NAME]
-        self.host = discovery_info.get("host")
+        self.host = self.context["host"] = discovery_info.get("host")
         self.port = discovery_info.get("port")
-
         if any(
             self.host == flow["context"].get("host")
             for flow in self._async_in_progress()
@@ -229,16 +241,24 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_configured")
 
         # try to obtain the mac address from the device
-        import konnected
+        try:
+            self.device_id = (
+                get_status(self.host, self.port).get("mac").replace(":", "")
+            )
+            if not self.device_id:
+                return self.async_abort(reason="cannot_connect")
 
-        self.device_id = (
-            konnected.Client(self.host, str(self.port))
-            .get_status()
-            .get("mac")
-            .replace(":", "")
-        )
-        if not self.device_id:
+        except CannotConnect:
             return self.async_abort(reason="cannot_connect")
+
+        # if this device exists but the host is different we will utilize it's cfg
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            if self.device_id == entry.data["id"]:
+                _LOGGER.info("Konnected host changed - creating replacement cfg entry")
+                config = copy.deepcopy(entry.data)
+                config["host"] = self.host
+                config["port"] = self.port
+                return await self.async_step_import(config)
 
         _LOGGER.info(discovery_info)
         return await self.async_step_io()
@@ -270,7 +290,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="io",
                 data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL),
                 description_placeholders={
-                    "model": "Konnected Pro Panel",
+                    "model": "Konnected Panel",
                     "host": self.host,
                 },
                 errors=errors,
@@ -417,8 +437,8 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         If an existing config file is found, we will validate the info
         and create an entry. Otherwise we will create a new one.
         """
-        host = import_info[CONF_HOST]
         device_id = import_info[CONF_ID]
+        host = import_info.get(CONF_HOST)
 
         # Remove all other entries of panels with same ID or host
         same_panel_entries = [
@@ -436,13 +456,5 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         return self.async_create_entry(
-            title="Konnected.io Alarm Panel", data=import_info,
+            title=self.model + " Alarm Panel", data=import_info,
         )
-
-
-class CannotConnect(exceptions.HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class InvalidAuth(exceptions.HomeAssistantError):
-    """Error to indicate there is invalid auth."""

@@ -16,8 +16,10 @@ from homeassistant.const import (
     CONF_TYPE,
     CONF_ZONE,
 )
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import dispatcher_send
 
+from .errors import CannotConnect
 from .const import (
     CONF_ACTIVATION,
     CONF_API_HOST,
@@ -50,14 +52,11 @@ class AlarmPanel:
         self.config_entry = config_entry
         self.config = (
             config_entry.data
-        )  # the configuration.yaml data contained in a device entry
+        )  # a configuration.yaml device config contained in a device entry
         self.host = self.config.get(CONF_HOST)
         self.port = self.config.get(CONF_PORT)
-
-        import konnected
-
-        self.client = konnected.Client(self.host, str(self.port))
-        self.status = self.client.get_status()
+        self.client = None
+        self.status = None
 
     @property
     def device_id(self):
@@ -69,7 +68,7 @@ class AlarmPanel:
         """Return the configuration stored in `hass.data` for this device."""
         return self.hass.data[DOMAIN][CONF_DEVICES].get(self.device_id)
 
-    def setup(self):
+    async def async_setup(self):
         """Set up a newly discovered Konnected device."""
         _LOGGER.info(
             "Discovered Konnected device %s. Open http://%s:%s in a "
@@ -78,9 +77,29 @@ class AlarmPanel:
             self.host,
             self.port,
         )
-        self.save_data()
-        self.update_initial_states()
-        self.sync_device_config()
+        try:
+            import konnected
+
+            self.client = konnected.Client(self.host, str(self.port))
+            self.status = self.client.get_status()
+            self.save_data()
+            self.update_initial_states()
+            self.sync_device_config()
+
+        except Exception:
+            raise CannotConnect
+
+        device_registry = await dr.async_get_registry(self.hass)
+
+        device_registry.async_get_or_create(
+            config_entry_id=self.config_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, self.status.get("mac"))},
+            identifiers={(DOMAIN, self.device_id)},
+            manufacturer="Konnected.io",
+            name=self.config_entry.title,
+            model=self.status.get("name", "Konnected"),
+            sw_version=self.status.get("swVersion"),
+        )
 
     def save_data(self):
         """Save the device configuration to `hass.data`."""
@@ -253,3 +272,15 @@ class AlarmPanel:
         if self.desired_settings_payload() != self.current_settings_payload():
             _LOGGER.info("pushing settings to device %s", self.device_id)
             self.client.put_settings(**self.desired_settings_payload())
+
+
+def get_status(host, port):
+    """Get the status of a Konnected Panel."""
+    import konnected
+
+    try:
+        return konnected.Client(host, str(port)).get_status()
+
+    except Exception as err:
+        _LOGGER.error("Exception trying to get panel status: %s", err)
+        raise CannotConnect
