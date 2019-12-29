@@ -28,7 +28,7 @@ from homeassistant.const import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import storage, config_validation as cv
 
 from .config_flow import (
     configured_devices,
@@ -47,6 +47,8 @@ from .panel import AlarmPanel
 
 _LOGGER = logging.getLogger(__name__)
 
+STORAGE_VERSION = 1
+STORAGE_KEY = DOMAIN
 
 # pylint: disable=no-value-for-parameter
 CONFIG_SCHEMA = vol.Schema(
@@ -72,14 +74,26 @@ async def async_setup(hass: HomeAssistant, config: dict):
     if cfg is None:
         cfg = {}
 
-    access_token = cfg.get(CONF_ACCESS_TOKEN) or "".join(
-        random.choices(string.ascii_uppercase + string.digits, k=20)
+    store = storage.Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    data_store = await store.async_load()
+    if data_store is None:
+        data_store = {}
+
+    # create a token if none in yaml or storage
+    access_token = (
+        cfg.get(CONF_ACCESS_TOKEN)
+        or data_store.get(CONF_ACCESS_TOKEN)
+        or "".join(random.choices(string.ascii_uppercase + string.digits, k=20))
     )
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {
             CONF_ACCESS_TOKEN: access_token,
             CONF_API_HOST: cfg.get(CONF_API_HOST),
+            CONF_DEVICES: {},
         }
+
+    # save off the access token
+    await store.async_save({CONF_ACCESS_TOKEN: access_token})
 
     hass.http.register_view(KonnectedView(access_token))
 
@@ -111,7 +125,14 @@ async def async_setup(hass: HomeAssistant, config: dict):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up panel from a config entry."""
     try:
-        await AlarmPanel(hass, entry).async_setup()
+        device_data = hass.data[DOMAIN][CONF_DEVICES].get(entry.data["id"])
+        if device_data:
+            client = device_data["panel"]
+        else:
+            client = AlarmPanel(hass, entry)
+            await client.async_save_data()
+
+        await client.async_connect()
         for component in PLATFORMS:
             hass.async_create_task(
                 hass.config_entries.async_forward_entry_setup(entry, component)
@@ -164,7 +185,7 @@ class KonnectedView(HomeAssistantView):
         zone_num = request.query.get("zone")
         data = hass.data[DOMAIN]
 
-        device = data[CONF_DEVICES][device_id]
+        device = data[CONF_DEVICES].get(device_id)
         if not device:
             return self.json_message(
                 "Device " + device_id + " not configured", status_code=HTTP_NOT_FOUND
@@ -184,7 +205,6 @@ class KonnectedView(HomeAssistantView):
                 format("Switch on zone {} not configured", zone_num),
                 status_code=HTTP_NOT_FOUND,
             )
-
         return self.json(
             {
                 "zone": zone_num,

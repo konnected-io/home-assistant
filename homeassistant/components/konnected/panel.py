@@ -16,8 +16,9 @@ from homeassistant.const import (
     CONF_TYPE,
     CONF_ZONE,
 )
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.dispatcher import dispatcher_send
+from homeassistant.core import callback
+from homeassistant.helpers import aiohttp_client, device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .errors import CannotConnect
 from .const import (
@@ -34,10 +35,8 @@ from .const import (
     CONF_REPEAT,
     DOMAIN,
     ENDPOINT_ROOT,
-    # PIN_TO_ZONE,
     SIGNAL_SENSOR_UPDATE,
     STATE_LOW,
-    # ZONE_TO_PIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,16 +67,19 @@ class AlarmPanel:
         """Return the configuration stored in `hass.data` for this device."""
         return self.hass.data[DOMAIN][CONF_DEVICES].get(self.device_id)
 
-    async def async_setup(self):
+    async def async_connect(self):
         """Connect to and setup a Konnected device."""
         try:
             import konnected
 
-            self.client = konnected.Client(self.host, str(self.port))
-            self.status = self.client.get_status()
-            self.save_data()
-            self.update_initial_states()
-            self.sync_device_config()
+            self.client = konnected.Client(
+                host=self.host,
+                port=str(self.port),
+                websession=aiohttp_client.async_get_clientsession(self.hass),
+            )
+            self.status = await self.client.get_status()
+            await self.async_update_initial_states()
+            await self.async_sync_device_config()
 
         except Exception:
             raise CannotConnect
@@ -102,7 +104,7 @@ class AlarmPanel:
             sw_version=self.status.get("swVersion"),
         )
 
-    def save_data(self):
+    async def async_save_data(self):
         """Save the device configuration to `hass.data`."""
         binary_sensors = {}
         for entity in self.config.get(CONF_BINARY_SENSORS) or []:
@@ -169,7 +171,7 @@ class AlarmPanel:
             CONF_DISCOVERY: self.config.get(CONF_DISCOVERY),
             CONF_HOST: self.host,
             CONF_PORT: self.port,
-            "client": self.client,
+            "panel": self,
         }
 
         if CONF_DEVICES not in self.hass.data[DOMAIN]:
@@ -184,11 +186,13 @@ class AlarmPanel:
         )
         self.hass.data[DOMAIN][CONF_DEVICES][self.device_id] = device_data
 
-    def binary_sensor_configuration(self):
+    @callback
+    def async_binary_sensor_configuration(self):
         """Return the configuration map for syncing binary sensors."""
         return [{"zone": p} for p in self.stored_configuration[CONF_BINARY_SENSORS]]
 
-    def actuator_configuration(self):
+    @callback
+    def async_actuator_configuration(self):
         """Return the configuration map for syncing actuators."""
         return [
             {
@@ -198,7 +202,8 @@ class AlarmPanel:
             for data in self.stored_configuration[CONF_SWITCHES]
         ]
 
-    def dht_sensor_configuration(self):
+    @callback
+    def async_dht_sensor_configuration(self):
         """Return the configuration map for syncing DHT sensors."""
         return [
             {
@@ -209,7 +214,8 @@ class AlarmPanel:
             if sensor[CONF_TYPE] == "dht"
         ]
 
-    def ds18b20_sensor_configuration(self):
+    @callback
+    def async_ds18b20_sensor_configuration(self):
         """Return the configuration map for syncing DS18B20 sensors."""
         return [
             {"zone": sensor[CONF_ZONE]}
@@ -217,7 +223,7 @@ class AlarmPanel:
             if sensor[CONF_TYPE] == "ds18b20"
         ]
 
-    def update_initial_states(self):
+    async def async_update_initial_states(self):
         """Update the initial state of each sensor from status poll."""
         for sensor_data in self.status.get("sensors"):
             sensor_config = self.stored_configuration[CONF_BINARY_SENSORS].get(
@@ -229,9 +235,12 @@ class AlarmPanel:
             if sensor_config.get(CONF_INVERSE):
                 state = not state
 
-            dispatcher_send(self.hass, SIGNAL_SENSOR_UPDATE.format(entity_id), state)
+            await async_dispatcher_send(
+                self.hass, SIGNAL_SENSOR_UPDATE.format(entity_id), state
+            )
 
-    def desired_settings_payload(self):
+    @callback
+    def async_desired_settings_payload(self):
         """Return a dict representing the desired device configuration."""
         desired_api_host = (
             self.hass.data[DOMAIN].get(CONF_API_HOST) or self.hass.config.api.base_url
@@ -239,17 +248,20 @@ class AlarmPanel:
         desired_api_endpoint = desired_api_host + ENDPOINT_ROOT
 
         return {
-            "sensors": self.binary_sensor_configuration(),
-            "actuators": self.actuator_configuration(),
-            "dht_sensors": self.dht_sensor_configuration(),
-            "ds18b20_sensors": self.ds18b20_sensor_configuration(),
-            "auth_token": self.config.get(CONF_ACCESS_TOKEN),
+            "sensors": self.async_binary_sensor_configuration(),
+            "actuators": self.async_actuator_configuration(),
+            "dht_sensors": self.async_dht_sensor_configuration(),
+            "ds18b20_sensors": self.async_ds18b20_sensor_configuration(),
+            "auth_token": self.hass.data[DOMAIN].get(
+                CONF_ACCESS_TOKEN
+            ),  # one common token to all devices
             "endpoint": desired_api_endpoint,
             "blink": self.config.get(CONF_BLINK),
             "discovery": self.config.get(CONF_DISCOVERY),
         }
 
-    def current_settings_payload(self):
+    @callback
+    def async_current_settings_payload(self):
         """Return a dict of configuration currently stored on the device."""
         settings = self.status["settings"]
         if not settings:
@@ -266,24 +278,29 @@ class AlarmPanel:
             "discovery": settings.get(CONF_DISCOVERY),
         }
 
-    def sync_device_config(self):
+    async def async_sync_device_config(self):
         """Sync the new zone configuration to the Konnected device if needed."""
         _LOGGER.debug(
             "Device %s settings payload: %s",
             self.device_id,
-            self.desired_settings_payload(),
+            self.async_desired_settings_payload(),
         )
-        if self.desired_settings_payload() != self.current_settings_payload():
+        if (
+            self.async_desired_settings_payload()
+            != self.async_current_settings_payload()
+        ):
             _LOGGER.info("pushing settings to device %s", self.device_id)
-            self.client.put_settings(**self.desired_settings_payload())
+            await self.client.put_settings(**self.async_desired_settings_payload())
 
 
-def get_status(host, port):
+async def get_status(hass, host, port):
     """Get the status of a Konnected Panel."""
     import konnected
 
     try:
-        return konnected.Client(host, str(port)).get_status()
+        return await konnected.Client(
+            host, str(port), aiohttp_client.async_get_clientsession(hass)
+        ).get_status()
 
     except Exception as err:
         _LOGGER.error("Exception trying to get panel status: %s", err)

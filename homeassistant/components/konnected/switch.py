@@ -74,9 +74,8 @@ class KonnectedSwitch(ToggleEntity):
     @property
     def client(self):
         """Return the Konnected HTTP client."""
-        return self.hass.data[KONNECTED_DOMAIN][CONF_DEVICES][self._device_id].get(
-            "client"
-        )
+        device_data = self.hass.data[KONNECTED_DOMAIN][CONF_DEVICES][self._device_id]
+        return device_data.get("panel") and device_data.get("panel").client
 
     @property
     def device_info(self):
@@ -85,9 +84,9 @@ class KonnectedSwitch(ToggleEntity):
             "identifiers": {(KONNECTED_DOMAIN, self._device_id)},
         }
 
-    def turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs):
         """Send a command to turn on the switch."""
-        resp = self.client.put_device(
+        resp = await self.client.put_device(
             self._zone_num,
             int(self._activation == STATE_HIGH),
             self._momentary,
@@ -102,9 +101,9 @@ class KonnectedSwitch(ToggleEntity):
                 # Immediately set the state back off for momentary switches
                 self._set_state(False)
 
-    def turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs):
         """Send a command to turn off the switch."""
-        resp = self.client.put_device(
+        resp = await self.client.put_device(
             self._zone_num, int(self._activation == STATE_LOW)
         )
 
@@ -121,7 +120,7 @@ class KonnectedSwitch(ToggleEntity):
 
     def _set_state(self, state):
         self._state = state
-        self.schedule_update_ha_state()
+        self.async_schedule_update_ha_state()
         _LOGGER.debug(
             "Setting status of %s actuator zone %s to %s",
             self._device_id,

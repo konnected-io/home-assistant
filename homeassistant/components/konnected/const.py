@@ -34,6 +34,7 @@ ZONES = [
     "alarm1",
     "out1",
     "alarm2_out2",
+    "out",
 ]
 
 ENDPOINT_ROOT = "/api/konnected"

@@ -7,7 +7,7 @@
         "description": "Please enter the host information for your Konnected Panel."
       },
       "io": {
-        "title": "Configure Zones",
+        "title": "Configure I/O",
         "description": "Discovered a {model} at {host}. Select the base configuration of each I/O below - depending on the I/O it may allow for binary sensors (open/close contacts), digital sensors (dht and ds18b20), or switchable outputs. You'll be able to configure detailed options in the next steps.",
         "data": {
           "1": "Zone 1",
@@ -17,6 +17,13 @@
           "5": "Zone 5",
           "6": "Zone 6",
           "7": "Zone 7",
+          "out": "OUT"
+        }
+      },
+      "io_ext": {
+        "title": "Configure Extended I/O",
+        "description": "Select the configuration of the remaining I/O below.  You'll be able to configure detailed options in the next steps.",
+        "data": {
           "8": "Zone 8",
           "9": "Zone 9",
           "10": "Zone 10",

@@ -2,7 +2,7 @@
 from unittest.mock import patch
 from homeassistant.components.konnected import config_flow
 
-from tests.common import MockConfigEntry
+from tests.common import MockConfigEntry, mock_coro
 
 
 async def test_flow_works(hass, aioclient_mock):
@@ -16,17 +16,117 @@ async def test_flow_works(hass, aioclient_mock):
 
     with patch("konnected.Client") as mock_panel:
 
-        def mock_constructor(host, port):
+        def mock_constructor(host, port, websession):
             """Fake the panel constructor."""
             mock_panel.host = host
             mock_panel.port = port
             return mock_panel
 
         mock_panel.side_effect = mock_constructor
-        mock_panel.get_status.return_value = {
-            "mac": "11:22:33:44:55:66",
-            "name": "Konnected Pro",
+        mock_panel.get_status.return_value = mock_coro(
+            {"mac": "11:22:33:44:55:66", "name": "Konnected"}
+        )
+
+        result = await flow.async_step_user({"port": 1234, "host": "1.2.3.4"})
+
+    assert mock_panel.host == "1.2.3.4"
+    assert mock_panel.port == "1234"
+    assert len(mock_panel.get_status.mock_calls) == 1
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "io"
+
+    result = await flow.async_step_io(
+        {
+            "1": "Disabled",
+            "2": "Binary Sensor",
+            "3": "Digital Sensor",
+            "4": "Switchable Output",
+            "5": "Disabled",
+            "6": "Binary Sensor",
+            "out": "Switchable Output",
         }
+    )
+    assert result["type"] == "form"
+    assert result["step_id"] == "options_binary"
+
+    # zone 2
+    result = await flow.async_step_options_binary({"type": "door"})
+    assert result["type"] == "form"
+    assert result["step_id"] == "options_binary"
+
+    # zone 6
+    result = await flow.async_step_options_binary(
+        {"type": "window", "name": "winder", "inverse": True}
+    )
+    assert result["type"] == "form"
+    assert result["step_id"] == "options_digital"
+
+    # zone 3
+    result = await flow.async_step_options_digital({"type": "dht"})
+    assert result["type"] == "form"
+    assert result["step_id"] == "options_switch"
+
+    # zone 4
+    result = await flow.async_step_options_switch({})
+    assert result["type"] == "form"
+    assert result["step_id"] == "options_switch"
+
+    # zone out
+    result = await flow.async_step_options_switch(
+        {
+            "name": "switcher",
+            "activation": "low",
+            "momentary": 50,
+            "pause": 100,
+            "repeat": 4,
+        }
+    )
+    assert result["type"] == "create_entry"
+    assert result["data"] == {
+        "host": "1.2.3.4",
+        "port": 1234,
+        "id": "112233445566",
+        "binary_sensors": [
+            {"zone": "2", "type": "door"},
+            {"zone": "6", "type": "window", "name": "winder", "inverse": True},
+        ],
+        "sensors": [{"zone": "3", "type": "dht"}],
+        "switches": [
+            {"zone": "4"},
+            {
+                "zone": "out",
+                "name": "switcher",
+                "activation": "low",
+                "momentary": 50,
+                "pause": 100,
+                "repeat": 4,
+            },
+        ],
+    }
+
+
+async def test_pro_flow_works(hass, aioclient_mock):
+    """Test config flow ."""
+    flow = config_flow.KonnectedFlowHandler()
+    flow.hass = hass
+
+    result = await flow.async_step_user()
+    assert result["type"] == "form"
+    assert result["step_id"] == "user"
+
+    with patch("konnected.Client") as mock_panel:
+
+        def mock_constructor(host, port, websession):
+            """Fake the panel constructor."""
+            mock_panel.host = host
+            mock_panel.port = port
+            return mock_panel
+
+        mock_panel.side_effect = mock_constructor
+        mock_panel.get_status.return_value = mock_coro(
+            {"mac": "11:22:33:44:55:66", "name": "Konnected Pro"}
+        )
 
         result = await flow.async_step_user({"port": 1234, "host": "1.2.3.4"})
 
@@ -56,42 +156,63 @@ async def test_flow_works(hass, aioclient_mock):
             "alarm2_out2": "Disabled",
         }
     )
-
+    assert result["type"] == "form"
+    assert result["step_id"] == "io_ext"
+    result = await flow.async_step_io_ext(
+        {
+            "8": "Switchable Output",
+            "9": "Disabled",
+            "10": "Binary Sensor",
+            "11": "Digital Sensor",
+            "12": "Disabled",
+            "out1": "Switchable Output",
+            "alarm1": "Switchable Output",
+            "alarm2_out2": "Disabled",
+        }
+    )
     assert result["type"] == "form"
     assert result["step_id"] == "options_binary"
 
+    # zone 2
     result = await flow.async_step_options_binary({"type": "door"})
     assert result["type"] == "form"
     assert result["step_id"] == "options_binary"
 
+    # zone 6
     result = await flow.async_step_options_binary(
         {"type": "window", "name": "winder", "inverse": True}
     )
     assert result["type"] == "form"
     assert result["step_id"] == "options_binary"
 
+    # zone 10
     result = await flow.async_step_options_binary({"type": "door"})
     assert result["type"] == "form"
     assert result["step_id"] == "options_digital"
 
+    # zone 3
     result = await flow.async_step_options_digital({"type": "dht"})
     assert result["type"] == "form"
     assert result["step_id"] == "options_digital"
 
+    # zone 7
     result = await flow.async_step_options_digital(
         {"type": "ds18b20", "name": "temper"}
     )
     assert result["type"] == "form"
     assert result["step_id"] == "options_digital"
 
+    # zone 11
     result = await flow.async_step_options_digital({"type": "dht"})
     assert result["type"] == "form"
     assert result["step_id"] == "options_switch"
 
+    # zone 4
     result = await flow.async_step_options_switch({})
     assert result["type"] == "form"
     assert result["step_id"] == "options_switch"
 
+    # zone 8
     result = await flow.async_step_options_switch(
         {
             "name": "switcher",
@@ -104,10 +225,12 @@ async def test_flow_works(hass, aioclient_mock):
     assert result["type"] == "form"
     assert result["step_id"] == "options_switch"
 
+    # zone out1
     result = await flow.async_step_options_switch({})
     assert result["type"] == "form"
     assert result["step_id"] == "options_switch"
 
+    # zone alarm1
     result = await flow.async_step_options_switch({})
     assert result["type"] == "create_entry"
     assert result["data"] == {
@@ -148,17 +271,16 @@ async def test_ssdp(hass):
 
     with patch("konnected.Client") as mock_panel:
 
-        def mock_constructor(host, port):
+        def mock_constructor(host, port, websession):
             """Fake the panel constructor."""
             mock_panel.host = host
             mock_panel.port = port
             return mock_panel
 
         mock_panel.side_effect = mock_constructor
-        mock_panel.get_status.return_value = {
-            "mac": "11:22:33:44:55:66",
-            "name": "Konnected",
-        }
+        mock_panel.get_status.return_value = mock_coro(
+            {"mac": "11:22:33:44:55:66", "name": "Konnected"}
+        )
 
         result = await flow.async_step_ssdp(
             {
@@ -186,17 +308,16 @@ async def test_ssdp_pro(hass):
 
     with patch("konnected.Client") as mock_panel:
 
-        def mock_constructor(host, port):
+        def mock_constructor(host, port, websession):
             """Fake the panel constructor."""
             mock_panel.host = host
             mock_panel.port = port
             return mock_panel
 
         mock_panel.side_effect = mock_constructor
-        mock_panel.get_status.return_value = {
-            "mac": "11:22:33:44:55:66",
-            "name": "Konnected Pro",
-        }
+        mock_panel.get_status.return_value = mock_coro(
+            {"mac": "11:22:33:44:55:66", "name": "Konnected Pro"}
+        )
 
         result = await flow.async_step_ssdp(
             {
@@ -224,7 +345,7 @@ async def test_import_cannot_connect(hass):
 
     with patch("konnected.Client") as mock_panel:
 
-        def mock_constructor(host, port):
+        def mock_constructor(host, port, websession):
             """Fake the panel constructor."""
             mock_panel.host = host
             mock_panel.port = port
@@ -307,17 +428,16 @@ async def test_ssdp_host_update(hass):
 
     with patch("konnected.Client") as mock_panel:
 
-        def mock_constructor(host, port):
+        def mock_constructor(host, port, websession):
             """Fake the panel constructor."""
             mock_panel.host = host
             mock_panel.port = port
             return mock_panel
 
         mock_panel.side_effect = mock_constructor
-        mock_panel.get_status.return_value = {
-            "mac": "11:22:33:44:55:66",
-            "name": "Konnected Pro",
-        }
+        mock_panel.get_status.return_value = mock_coro(
+            {"mac": "11:22:33:44:55:66", "name": "Konnected Pro"}
+        )
 
         result = await flow.async_step_ssdp(
             {
