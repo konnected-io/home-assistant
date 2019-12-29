@@ -75,73 +75,54 @@ DATA_SCHEMA_KONN_MODEL[vol.Required("5", default="Disabled")] = vol.In(
 DATA_SCHEMA_KONN_MODEL[vol.Required("6", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL[vol.Required("7", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("8", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("9", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("11", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("12", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("alarm1", default="Disabled")] = vol.In(
-    ["Disabled", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("out1", default="Disabled")] = vol.In(
-    ["Disabled", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("alarm2_out2", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL[vol.Required("out", default="Disabled")] = vol.In(
     ["Disabled", "Switchable Output"]
 )
 
 
-DATA_SCHEMA_KONN_MODEL_PRO = OrderedDict()
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("1", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_1 = OrderedDict()
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("1", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("2", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("2", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("3", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("3", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("4", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("4", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("5", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("5", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("6", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("6", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("7", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("7", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("8", default="Disabled")] = vol.In(
+
+DATA_SCHEMA_KONN_MODEL_PRO_2 = OrderedDict()
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("8", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("9", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("9", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("11", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("11", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("12", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("12", default="Disabled")] = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("alarm1", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("alarm1", default="Disabled")] = vol.In(
     ["Disabled", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("out1", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("out1", default="Disabled")] = vol.In(
     ["Disabled", "Switchable Output"]
 )
-DATA_SCHEMA_KONN_MODEL_PRO[vol.Required("alarm2_out2", default="Disabled")] = vol.In(
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("alarm2_out2", default="Disabled")] = vol.In(
     ["Disabled", "Switchable Output"]
 )
 
@@ -279,7 +260,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self.port = user_input["port"]
 
                 # try to obtain the mac address from the device
-                status = get_status(self.host, self.port)
+                status = await get_status(self.hass, self.host, self.port)
                 self.device_id = status.get("mac").replace(":", "")
                 self.model = status.get("name", "Konnected")
                 return await self.async_step_io()
@@ -324,7 +305,9 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         # try to obtain the mac address from the device
         try:
             self.device_id = (
-                get_status(self.host, self.port).get("mac").replace(":", "")
+                (await get_status(self.hass, self.host, self.port))
+                .get("mac")
+                .replace(":", "")
             )
             if not self.device_id:
                 return self.async_abort(reason="cannot_connect")
@@ -353,18 +336,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             for key, value in user_input.items():
                 if value != "Disabled":
                     self.io_cfg.update({key: value})
-            return await self.async_step_options_binary()
-
-        if self.model == KONN_MODEL_PRO:
-            return self.async_show_form(
-                step_id="io",
-                data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL_PRO),
-                description_placeholders={
-                    "model": "Konnected Pro Panel",
-                    "host": self.host,
-                },
-                errors=errors,
-            )
+            return await self.async_step_io_ext()
 
         if self.model == KONN_MODEL:
             return self.async_show_form(
@@ -372,6 +344,44 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL),
                 description_placeholders={
                     "model": "Konnected Panel",
+                    "host": self.host,
+                },
+                errors=errors,
+            )
+
+        # configure the first half of the pro board io
+        if self.model == KONN_MODEL_PRO:
+            return self.async_show_form(
+                step_id="io",
+                data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL_PRO_1),
+                description_placeholders={
+                    "model": "Konnected Pro Panel",
+                    "host": self.host,
+                },
+                errors=errors,
+            )
+
+        return self.async_abort(reason="not_konn_panel")
+
+    async def async_step_io_ext(self, user_input=None):
+        """Allow the user to configure the extended IO for pro."""
+        errors = {}
+        if user_input is not None:
+            # strip out disabled io and save for options cfg
+            for key, value in user_input.items():
+                if value != "Disabled":
+                    self.io_cfg.update({key: value})
+            return await self.async_step_options_binary()
+
+        if self.model == KONN_MODEL:
+            return await self.async_step_options_binary()
+
+        if self.model == KONN_MODEL_PRO:
+            return self.async_show_form(
+                step_id="io_ext",
+                data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL_PRO_2),
+                description_placeholders={
+                    "model": "Konnected Pro Panel",
                     "host": self.host,
                 },
                 errors=errors,

@@ -116,12 +116,23 @@ async def test_unload_entry(hass):
         domain=konnected.DOMAIN, data={konnected.CONF_ID: "aabbccddeeff"}
     )
     entry.add_to_hass(hass)
-    hass.data[konnected.DOMAIN] = {"devices": {"aabbccddeeff": "something"}}
 
     with patch.object(konnected, "AlarmPanel") as mock_panel:
+
+        def mock_constructor(hass, entry):
+            """Fake the panel constructor."""
+            return mock_panel
+
+        def save_data():
+            hass.data[konnected.DOMAIN]["devices"]["aabbccddeeff"] = {"some": "thing"}
+
+        mock_panel.side_effect = mock_constructor
+        mock_panel.async_save_data.side_effect = save_data
+        mock_panel.async_save_data.return_value = mock_coro()
+        mock_panel.async_connect.return_value = mock_coro()
         assert await async_setup_component(hass, konnected.DOMAIN, {}) is True
 
-    assert len(mock_panel.return_value.mock_calls) == 1
+    assert hass.data[konnected.DOMAIN]["devices"].get("aabbccddeeff") is not None
 
     assert await konnected.async_unload_entry(hass, entry)
-    assert hass.data[konnected.DOMAIN] == {"devices": {}}
+    assert hass.data[konnected.DOMAIN]["devices"] == {}

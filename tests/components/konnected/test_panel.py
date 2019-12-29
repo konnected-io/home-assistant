@@ -2,7 +2,7 @@
 from unittest.mock import patch
 
 from homeassistant.components.konnected import panel, config_flow
-from tests.common import MockConfigEntry
+from tests.common import MockConfigEntry, mock_coro
 
 
 async def test_create_and_setup(hass):
@@ -49,32 +49,35 @@ async def test_create_and_setup(hass):
 
     with patch("konnected.Client") as mock_panel:
 
-        def mock_constructor(host, port):
+        def mock_constructor(host, port, websession):
             """Fake the panel constructor."""
             mock_panel.host = host
             mock_panel.port = port
             return mock_panel
 
         mock_panel.side_effect = mock_constructor
-        mock_panel.get_status.return_value = {
-            "hwVersion": "2.3.0",
-            "swVersion": "2.3.1",
-            "heap": 10000,
-            "uptime": 12222,
-            "ip": "192.168.1.90",
-            "port": 9123,
-            "sensors": [],
-            "actuators": [],
-            "dht_sensors": [],
-            "ds18b20_sensors": [],
-            "mac": "11:22:33:44:55:66",
-            "name": "Konnected Pro",
-            "settings": {},
-        }
-        mock_panel.put_settings.return_value = True
+        mock_panel.get_status.return_value = mock_coro(
+            {
+                "hwVersion": "2.3.0",
+                "swVersion": "2.3.1",
+                "heap": 10000,
+                "uptime": 12222,
+                "ip": "192.168.1.90",
+                "port": 9123,
+                "sensors": [],
+                "actuators": [],
+                "dht_sensors": [],
+                "ds18b20_sensors": [],
+                "mac": "11:22:33:44:55:66",
+                "name": "Konnected Pro",
+                "settings": {},
+            }
+        )
+        mock_panel.put_settings.return_value = mock_coro()
 
         device = panel.AlarmPanel(hass, entry)
-        await device.async_setup()
+        await device.async_save_data()
+        await device.async_connect()
 
     # confirm the device settings are saved in hass.data
     assert hass.data[panel.DOMAIN][panel.CONF_DEVICES] == {
@@ -100,7 +103,7 @@ async def test_create_and_setup(hass):
                 },
             },
             "blink": True,
-            "client": device.client,
+            "panel": device,
             "discovery": True,
             "host": "1.2.3.4",
             "port": 1234,
