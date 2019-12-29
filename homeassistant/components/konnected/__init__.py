@@ -25,6 +25,7 @@ from homeassistant.const import (
     HTTP_NOT_FOUND,
     HTTP_UNAUTHORIZED,
     STATE_ON,
+    STATE_OFF,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -182,7 +183,7 @@ class KonnectedView(HomeAssistantView):
     async def get(self, request: Request, device_id) -> Response:
         """Return the current binary state of a switch."""
         hass = request.app["hass"]
-        zone_num = request.query.get("zone")
+        zone_num = str(request.query.get("zone"))
         data = hass.data[DOMAIN]
 
         device = data[CONF_DEVICES].get(device_id)
@@ -205,12 +206,24 @@ class KonnectedView(HomeAssistantView):
                 format("Switch on zone {} not configured", zone_num),
                 status_code=HTTP_NOT_FOUND,
             )
+
+        # Make sure entity is setup
+        if zone.get(ATTR_ENTITY_ID):
+            return self.json(
+                {
+                    "zone": zone_num,
+                    "state": self.binary_value(
+                        hass.states.get(zone.get(ATTR_ENTITY_ID)).state,
+                        zone[CONF_ACTIVATION],
+                    ),
+                }
+            )
+
+        _LOGGER.warning("Konnected entity not yet setup, returning default")
         return self.json(
             {
                 "zone": zone_num,
-                "state": self.binary_value(
-                    hass.states.get(zone[ATTR_ENTITY_ID]).state, zone[CONF_ACTIVATION]
-                ),
+                "state": self.binary_value(STATE_OFF, zone[CONF_ACTIVATION]),
             }
         )
 
@@ -221,7 +234,7 @@ class KonnectedView(HomeAssistantView):
 
         try:  # Konnected 2.2.0 and above supports JSON payloads
             payload = await request.json()
-            zone_num = payload["zone"]
+            zone_num = str(payload["zone"])
         except json.decoder.JSONDecodeError:
             _LOGGER.error(
                 (
@@ -234,12 +247,13 @@ class KonnectedView(HomeAssistantView):
         auth = request.headers.get(AUTHORIZATION, None)
         if not hmac.compare_digest(f"Bearer {self.auth_token}", auth):
             return self.json_message("unauthorized", status_code=HTTP_UNAUTHORIZED)
-        zone_num = int(zone_num)
+
         device = data[CONF_DEVICES].get(device_id)
         if device is None:
             return self.json_message(
                 "unregistered device", status_code=HTTP_BAD_REQUEST
             )
+
         zone_data = device[CONF_BINARY_SENSORS].get(zone_num) or next(
             (s for s in device[CONF_SENSORS] if s[CONF_ZONE] == zone_num), None
         )
@@ -266,7 +280,7 @@ class KonnectedView(HomeAssistantView):
 
         try:  # Konnected 2.2.0 and above supports JSON payloads
             payload = await request.json()
-            zone_num = payload["zone"]
+            zone_num = str(payload["zone"])
         except json.decoder.JSONDecodeError:
             _LOGGER.error(
                 (
@@ -279,12 +293,13 @@ class KonnectedView(HomeAssistantView):
         auth = request.headers.get(AUTHORIZATION, None)
         if not hmac.compare_digest(f"Bearer {self.auth_token}", auth):
             return self.json_message("unauthorized", status_code=HTTP_UNAUTHORIZED)
-        zone_num = int(zone_num)
+
         device = data[CONF_DEVICES].get(device_id)
         if device is None:
             return self.json_message(
                 "unregistered device", status_code=HTTP_BAD_REQUEST
             )
+
         zone_data = device[CONF_BINARY_SENSORS].get(zone_num) or next(
             (s for s in device[CONF_SENSORS] if s[CONF_ZONE] == zone_num), None
         )

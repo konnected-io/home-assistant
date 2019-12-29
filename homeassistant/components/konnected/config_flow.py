@@ -173,7 +173,7 @@ SENSOR_SCHEMA = vol.All(
             vol.Required(CONF_ZONE): vol.In(ZONES),
             vol.Required(CONF_TYPE): vol.All(vol.Lower, vol.In(["dht", "ds18b20"])),
             vol.Optional(CONF_NAME): cv.string,
-            vol.Optional(CONF_POLL_INTERVAL): vol.All(
+            vol.Optional(CONF_POLL_INTERVAL, default=3): vol.All(
                 vol.Coerce(int), vol.Range(min=1)
             ),
         }
@@ -265,8 +265,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self.model = status.get("name", "Konnected")
                 return await self.async_step_io()
 
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except CannotConnect:
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
@@ -529,7 +528,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         and create an entry. Otherwise we will create a new one.
         """
         try:
-            DEVICE_SCHEMA(import_info)
+            device_config = DEVICE_SCHEMA(import_info)
 
         except vol.Invalid as err:
             _LOGGER.error(
@@ -537,8 +536,8 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return self.async_abort(reason="unknown")
 
-        device_id = import_info[CONF_ID]
-        host = import_info.get(CONF_HOST)
+        device_id = device_config[CONF_ID]
+        host = device_config.get(CONF_HOST)
 
         # Remove all other entries of panels with same ID or host
         same_panel_entries = [
@@ -556,5 +555,5 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         return self.async_create_entry(
-            title=self.model + " Alarm Panel", data=import_info,
+            title=self.model + " Alarm Panel", data=device_config,
         )

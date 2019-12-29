@@ -87,13 +87,15 @@ async def test_flow_works(hass, aioclient_mock):
         "host": "1.2.3.4",
         "port": 1234,
         "id": "112233445566",
+        "blink": True,
+        "discovery": True,
         "binary_sensors": [
-            {"zone": "2", "type": "door"},
+            {"zone": "2", "type": "door", "inverse": False},
             {"zone": "6", "type": "window", "name": "winder", "inverse": True},
         ],
-        "sensors": [{"zone": "3", "type": "dht"}],
+        "sensors": [{"zone": "3", "type": "dht", "poll_interval": 3}],
         "switches": [
-            {"zone": "4"},
+            {"activation": "high", "zone": "4"},
             {
                 "zone": "out",
                 "name": "switcher",
@@ -237,18 +239,20 @@ async def test_pro_flow_works(hass, aioclient_mock):
         "host": "1.2.3.4",
         "port": 1234,
         "id": "112233445566",
+        "blink": True,
+        "discovery": True,
         "binary_sensors": [
-            {"zone": "2", "type": "door"},
+            {"zone": "2", "type": "door", "inverse": False},
             {"zone": "6", "type": "window", "name": "winder", "inverse": True},
-            {"zone": "10", "type": "door"},
+            {"zone": "10", "type": "door", "inverse": False},
         ],
         "sensors": [
-            {"zone": "3", "type": "dht"},
-            {"zone": "7", "type": "ds18b20", "name": "temper"},
-            {"zone": "11", "type": "dht"},
+            {"zone": "3", "type": "dht", "poll_interval": 3},
+            {"zone": "7", "type": "ds18b20", "name": "temper", "poll_interval": 3},
+            {"zone": "11", "type": "dht", "poll_interval": 3},
         ],
         "switches": [
-            {"zone": "4"},
+            {"activation": "high", "zone": "4"},
             {
                 "zone": "8",
                 "name": "switcher",
@@ -257,8 +261,8 @@ async def test_pro_flow_works(hass, aioclient_mock):
                 "pause": 100,
                 "repeat": 4,
             },
-            {"zone": "out1"},
-            {"zone": "alarm1"},
+            {"activation": "high", "zone": "out1"},
+            {"activation": "high", "zone": "alarm1"},
         ],
     }
 
@@ -353,6 +357,7 @@ async def test_import_cannot_connect(hass):
 
         mock_panel.side_effect = mock_constructor
         mock_panel.get_status.side_effect = config_flow.CannotConnect
+        mock_panel.ClientError = config_flow.CannotConnect
 
         result = await flow.async_step_ssdp(
             {
@@ -450,7 +455,7 @@ async def test_ssdp_host_update(hass):
 
     assert result["type"] == "create_entry"
     assert result["data"]["host"] == "1.1.1.1"
-    assert result["data"]["port"] == "1234"
+    assert result["data"]["port"] == 1234
     assert result["data"]["id"] == "112233445566"
     assert result["data"]["binary_sensors"][0] == {
         "inverse": False,
@@ -501,18 +506,20 @@ async def test_import_existing_config(hass):
         "host": "1.2.3.4",
         "port": 1234,
         "id": "112233445566",
+        "blink": True,
+        "discovery": True,
         "binary_sensors": [
-            {"zone": "2", "type": "door"},
+            {"zone": "2", "type": "door", "inverse": False},
             {"zone": "6", "type": "window", "name": "winder", "inverse": True},
-            {"zone": "10", "type": "door"},
+            {"zone": "10", "type": "door", "inverse": False},
         ],
         "sensors": [
-            {"zone": "3", "type": "dht"},
-            {"zone": "7", "type": "ds18b20", "name": "temper"},
-            {"zone": "11", "type": "dht"},
+            {"zone": "3", "type": "dht", "poll_interval": 3},
+            {"zone": "7", "type": "ds18b20", "name": "temper", "poll_interval": 3},
+            {"zone": "11", "type": "dht", "poll_interval": 3},
         ],
         "switches": [
-            {"zone": "4"},
+            {"activation": "high", "zone": "4"},
             {
                 "zone": "8",
                 "name": "switcher",
@@ -521,8 +528,8 @@ async def test_import_existing_config(hass):
                 "pause": 100,
                 "repeat": 4,
             },
-            {"zone": "out1"},
-            {"zone": "alarm1"},
+            {"activation": "high", "zone": "out1"},
+            {"activation": "high", "zone": "alarm1"},
         ],
     }
 

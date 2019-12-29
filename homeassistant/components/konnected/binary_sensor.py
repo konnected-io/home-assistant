@@ -6,9 +6,9 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_STATE,
     CONF_BINARY_SENSORS,
+    CONF_DEVICES,
     CONF_NAME,
     CONF_TYPE,
-    CONF_ZONE,
 )
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -25,10 +25,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up binary sensors attached to a Konnected device from a config entry."""
+    data = hass.data[KONNECTED_DOMAIN]
     device_id = config_entry.data["id"]
     sensors = [
-        KonnectedBinarySensor(device_id, zone_data.get(CONF_ZONE), zone_data)
-        for zone_data in config_entry.data[CONF_BINARY_SENSORS]
+        KonnectedBinarySensor(device_id, pin_num, pin_data)
+        for pin_num, pin_data in data[CONF_DEVICES][device_id][
+            CONF_BINARY_SENSORS
+        ].items()
     ]
     async_add_entities(sensors)
 

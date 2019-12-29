@@ -110,19 +110,14 @@ async def test_create_and_setup(hass):
             "sensors": [
                 {
                     "name": "Konnected 445566 Sensor 3",
-                    "poll_interval": None,
+                    "poll_interval": 3,
                     "type": "dht",
                     "zone": "3",
                 },
-                {
-                    "name": "temper",
-                    "poll_interval": None,
-                    "type": "ds18b20",
-                    "zone": "7",
-                },
+                {"name": "temper", "poll_interval": 3, "type": "ds18b20", "zone": "7"},
                 {
                     "name": "Konnected 445566 Sensor 11",
-                    "poll_interval": None,
+                    "poll_interval": 3,
                     "type": "dht",
                     "zone": "11",
                 },

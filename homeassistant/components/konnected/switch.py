@@ -30,10 +30,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up switches attached to a Konnected device from a config entry."""
+    data = hass.data[KONNECTED_DOMAIN]
     device_id = config_entry.data["id"]
     switches = [
         KonnectedSwitch(device_id, zone_data.get(CONF_ZONE), zone_data)
-        for zone_data in config_entry.data[CONF_SWITCHES]
+        for zone_data in data[CONF_DEVICES][device_id][CONF_SWITCHES]
     ]
     async_add_entities(switches)
 
