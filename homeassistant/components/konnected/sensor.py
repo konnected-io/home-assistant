@@ -2,6 +2,7 @@
 import logging
 
 from homeassistant.const import (
+    CONF_DEVICES,
     CONF_NAME,
     CONF_ZONE,
     CONF_SENSORS,
@@ -31,13 +32,14 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up sensors attached to a Konnected device from a config entry."""
+    data = hass.data[KONNECTED_DOMAIN]
     device_id = config_entry.data["id"]
     sensors = []
 
     # Initialize all DHT sensors.
     dht_sensors = [
         sensor
-        for sensor in config_entry.data[CONF_SENSORS]
+        for sensor in data[CONF_DEVICES][device_id][CONF_SENSORS]
         if sensor[CONF_TYPE] == "dht"
     ]
     for sensor in dht_sensors:
@@ -52,7 +54,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         sensor_config = next(
             (
                 s
-                for s in config_entry.data[CONF_SENSORS]
+                for s in data[CONF_DEVICES][device_id][CONF_SENSORS]
                 if s[CONF_TYPE] == "ds18b20" and s[CONF_ZONE] == attrs.get(CONF_ZONE)
             ),
             None,

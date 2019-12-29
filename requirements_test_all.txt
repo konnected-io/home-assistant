@@ -265,7 +265,7 @@ keyring==20.0.0
 keyrings.alt==3.4.0
 
 # homeassistant.components.konnected
-konnected==0.1.5
+konnected==1.0.0
 
 # homeassistant.components.dyson
 libpurecool==0.6.0

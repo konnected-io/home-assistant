@@ -78,10 +78,12 @@ class AlarmPanel:
                 websession=aiohttp_client.async_get_clientsession(self.hass),
             )
             self.status = await self.client.get_status()
+            _LOGGER.info(self.status)
             await self.async_update_initial_states()
             await self.async_sync_device_config()
 
-        except Exception:
+        except self.client.ClientError as err:
+            _LOGGER.warning("Exception trying to connect to panel: %s", err)
             raise CannotConnect
 
         _LOGGER.info(
@@ -235,7 +237,7 @@ class AlarmPanel:
             if sensor_config.get(CONF_INVERSE):
                 state = not state
 
-            await async_dispatcher_send(
+            async_dispatcher_send(
                 self.hass, SIGNAL_SENSOR_UPDATE.format(entity_id), state
             )
 
@@ -273,7 +275,7 @@ class AlarmPanel:
             "dht_sensors": self.status.get(CONF_DHT_SENSORS),
             "ds18b20_sensors": self.status.get(CONF_DS18B20_SENSORS),
             "auth_token": settings.get("token"),
-            "endpoint": settings.get("apiUrl"),
+            "endpoint": settings.get("endpoint"),
             "blink": settings.get(CONF_BLINK),
             "discovery": settings.get(CONF_DISCOVERY),
         }
@@ -297,11 +299,12 @@ async def get_status(hass, host, port):
     """Get the status of a Konnected Panel."""
     import konnected
 
+    client = konnected.Client(
+        host, str(port), aiohttp_client.async_get_clientsession(hass)
+    )
     try:
-        return await konnected.Client(
-            host, str(port), aiohttp_client.async_get_clientsession(hass)
-        ).get_status()
+        return await client.get_status()
 
-    except Exception as err:
+    except client.ClientError as err:
         _LOGGER.error("Exception trying to get panel status: %s", err)
         raise CannotConnect
