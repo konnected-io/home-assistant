@@ -2,8 +2,8 @@
 import logging
 from pprint import pformat
 
-from homeassistant.components.unifi.config_flow import get_controller_from_config_entry
 from homeassistant.components.switch import SwitchDevice
+from homeassistant.components.unifi.config_flow import get_controller_from_config_entry
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC

@@ -1,12 +1,18 @@
 """Config flow for konnected.io integration."""
 import asyncio
+from collections import OrderedDict
 import copy
 import logging
-from collections import OrderedDict
+
 import voluptuous as vol
 from voluptuous.humanize import humanize_error
 
 from homeassistant import config_entries
+from homeassistant.components.binary_sensor import (
+    DEVICE_CLASS_DOOR,
+    DEVICE_CLASSES as BIN_SENS_TYPES,
+    DEVICE_CLASSES_SCHEMA,
+)
 from homeassistant.const import (
     CONF_BINARY_SENSORS,
     CONF_HOST,
@@ -19,16 +25,9 @@ from homeassistant.const import (
     CONF_TYPE,
     CONF_ZONE,
 )
-
 from homeassistant.core import callback
-from homeassistant.components.binary_sensor import (
-    DEVICE_CLASS_DOOR,
-    DEVICE_CLASSES as BIN_SENS_TYPES,
-    DEVICE_CLASSES_SCHEMA,
-)
 from homeassistant.helpers import config_validation as cv
 
-from .errors import CannotConnect
 from .const import (
     CONF_ACTIVATION,
     CONF_BLINK,
@@ -44,9 +43,12 @@ from .const import (
     STATE_LOW,
     ZONES,
 )
-from .panel import get_status, KONN_MODEL, KONN_MODEL_PRO
+from .errors import CannotConnect
+from .panel import KONN_MODEL, KONN_MODEL_PRO, get_status
 
 _LOGGER = logging.getLogger(__name__)
+
+ATTR_KONN_UPNP_MODEL_NAME = "model_name"  # standard upnp is modelName
 
 KONN_MANUFACTURER = "konnected.io"
 KONN_PANEL_MODEL_NAMES = {
@@ -332,18 +334,18 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         This flow is triggered by the SSDP component. It will check if the
         host is already configured and delegate to the import step if not.
         """
-        from homeassistant.components.ssdp import ATTR_MANUFACTURER, ATTR_MODEL_NAME
+        from homeassistant.components.ssdp import ATTR_UPNP_MANUFACTURER
 
-        if discovery_info.get(ATTR_MANUFACTURER) != KONN_MANUFACTURER:
+        if discovery_info.get(ATTR_UPNP_MANUFACTURER) != KONN_MANUFACTURER:
             return self.async_abort(reason="not_konn_panel")
 
         if not any(
-            name in discovery_info.get(ATTR_MODEL_NAME, "")
+            name in discovery_info.get(ATTR_KONN_UPNP_MODEL_NAME, "")
             for name in KONN_PANEL_MODEL_NAMES
         ):
             return self.async_abort(reason="not_konn_panel")
 
-        self.model = discovery_info[ATTR_MODEL_NAME]
+        self.model = discovery_info[ATTR_KONN_UPNP_MODEL_NAME]
         self.host = self.context["host"] = discovery_info.get("host")
         self.port = discovery_info.get("port")
         if any(

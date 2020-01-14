@@ -1,8 +1,8 @@
 """Support to send and receive Telegram messages."""
-import io
-from ipaddress import ip_network
 from functools import partial
 import importlib
+import io
+from ipaddress import ip_network
 import logging
 
 import requests
@@ -19,7 +19,6 @@ from telegram.parsemode import ParseMode
 from telegram.utils.request import Request
 import voluptuous as vol
 
-from homeassistant.components.notify import ATTR_DATA, ATTR_MESSAGE, ATTR_TITLE
 from homeassistant.const import (
     ATTR_COMMAND,
     ATTR_LATITUDE,
@@ -27,13 +26,17 @@ from homeassistant.const import (
     CONF_API_KEY,
     CONF_PLATFORM,
     CONF_TIMEOUT,
-    HTTP_DIGEST_AUTHENTICATION,
     CONF_URL,
+    HTTP_DIGEST_AUTHENTICATION,
 )
-import homeassistant.helpers.config_validation as cv
 from homeassistant.exceptions import TemplateError
+import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
+
+ATTR_DATA = "data"
+ATTR_MESSAGE = "message"
+ATTR_TITLE = "title"
 
 ATTR_ARGS = "args"
 ATTR_AUTHENTICATION = "authentication"
