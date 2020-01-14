@@ -297,7 +297,7 @@ async def test_ssdp(hass):
 
     assert result["type"] == "form"
     assert result["step_id"] == "io"
-    assert result["description_placeholders"]["model"] == "Konnected Panel"
+    assert result["description_placeholders"]["model"] == "Konnected Alarm Panel"
     assert flow.device_id == "112233445566"
     assert flow.model == config_flow.KONN_MODEL
     assert flow.host == "1.2.3.4"
@@ -334,7 +334,7 @@ async def test_ssdp_pro(hass):
 
     assert result["type"] == "form"
     assert result["step_id"] == "io"
-    assert result["description_placeholders"]["model"] == "Konnected Pro Panel"
+    assert result["description_placeholders"]["model"] == "Konnected Alarm Panel Pro"
     assert flow.device_id == "112233445566"
     assert flow.model == config_flow.KONN_MODEL_PRO
     assert flow.host == "1.2.3.4"
@@ -477,18 +477,18 @@ async def test_import_existing_config(hass):
             "id": "112233445566",
             "binary_sensors": [
                 {"zone": "2", "type": "door"},
-                {"zone": "6", "type": "window", "name": "winder", "inverse": True},
+                {"zone": 6, "type": "window", "name": "winder", "inverse": True},
                 {"zone": "10", "type": "door"},
             ],
             "sensors": [
                 {"zone": "3", "type": "dht"},
-                {"zone": "7", "type": "ds18b20", "name": "temper"},
+                {"zone": 7, "type": "ds18b20", "name": "temper"},
                 {"zone": "11", "type": "dht"},
             ],
             "switches": [
                 {"zone": "4"},
                 {
-                    "zone": "8",
+                    "zone": 8,
                     "name": "switcher",
                     "activation": "low",
                     "momentary": 50,
@@ -566,3 +566,67 @@ async def test_import_existing_config_entry(hass):
     # We did not process the result of this entry but already removed the old
     # ones. So we should have 0 entries.
     assert len(hass.config_entries.async_entries("konnected")) == 0
+
+
+async def test_import_pin_config(hass):
+    """Test importing a host with an existing config file that specifies pin configs."""
+    flow = config_flow.KonnectedFlowHandler()
+    flow.hass = hass
+    flow.context = {}
+
+    result = await flow.async_step_import(
+        {
+            "host": "1.2.3.4",
+            "port": 1234,
+            "id": "112233445566",
+            "binary_sensors": [
+                {"pin": 1, "type": "door"},
+                {"pin": "2", "type": "window", "name": "winder", "inverse": True},
+                {"zone": "3", "type": "door"},
+            ],
+            "sensors": [
+                {"zone": 4, "type": "dht"},
+                {"pin": "7", "type": "ds18b20", "name": "temper"},
+            ],
+            "switches": [
+                {
+                    "pin": "8",
+                    "name": "switcher",
+                    "activation": "low",
+                    "momentary": 50,
+                    "pause": 100,
+                    "repeat": 4,
+                },
+                {"zone": "6"},
+            ],
+        }
+    )
+
+    assert result["type"] == "create_entry"
+    assert result["data"] == {
+        "host": "1.2.3.4",
+        "port": 1234,
+        "id": "112233445566",
+        "blink": True,
+        "discovery": True,
+        "binary_sensors": [
+            {"zone": "1", "type": "door", "inverse": False},
+            {"zone": "2", "type": "window", "name": "winder", "inverse": True},
+            {"zone": "3", "type": "door", "inverse": False},
+        ],
+        "sensors": [
+            {"zone": "4", "type": "dht", "poll_interval": 3},
+            {"zone": "5", "type": "ds18b20", "name": "temper", "poll_interval": 3},
+        ],
+        "switches": [
+            {
+                "zone": "out",
+                "name": "switcher",
+                "activation": "low",
+                "momentary": 50,
+                "pause": 100,
+                "repeat": 4,
+            },
+            {"activation": "high", "zone": "6"},
+        ],
+    }

@@ -1,9 +1,9 @@
-"""Errors for the Hue component."""
+"""Errors for the Konnected component."""
 from homeassistant.exceptions import HomeAssistantError
 
 
 class KonnectedException(HomeAssistantError):
-    """Base class for Hue exceptions."""
+    """Base class for Konnected exceptions."""
 
 
 class CannotConnect(KonnectedException):

@@ -37,6 +37,11 @@ ZONES = [
     "out",
 ]
 
+# alarm panel pro only handles zones,
+# alarm panel allows specifying pins via configuration.yaml
+PIN_TO_ZONE = {"1": "1", "2": "2", "5": "3", "6": "4", "7": "5", "8": "out", "9": "6"}
+ZONE_TO_PIN = {zone: pin for pin, zone in PIN_TO_ZONE.items()}
+
 ENDPOINT_ROOT = "/api/konnected"
 UPDATE_ENDPOINT = ENDPOINT_ROOT + r"/device/{device_id:[a-zA-Z0-9]+}"
 SIGNAL_SENSOR_UPDATE = "konnected.{}.update"

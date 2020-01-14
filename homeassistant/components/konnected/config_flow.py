@@ -12,6 +12,7 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_ID,
     CONF_NAME,
+    CONF_PIN,
     CONF_PORT,
     CONF_SENSORS,
     CONF_SWITCHES,
@@ -38,93 +39,70 @@ from .const import (
     CONF_POLL_INTERVAL,
     CONF_REPEAT,
     DOMAIN,
+    PIN_TO_ZONE,
     STATE_HIGH,
     STATE_LOW,
     ZONES,
 )
-from .panel import get_status
+from .panel import get_status, KONN_MODEL, KONN_MODEL_PRO
 
 _LOGGER = logging.getLogger(__name__)
 
 KONN_MANUFACTURER = "konnected.io"
-KONN_MODEL = "Konnected"
-KONN_MODEL_PRO = "Konnected Pro"
-KONN_PANEL_MODEL_NAMES = [KONN_MODEL, KONN_MODEL_PRO]
+KONN_PANEL_MODEL_NAMES = {
+    KONN_MODEL: "Konnected Alarm Panel",
+    KONN_MODEL_PRO: "Konnected Alarm Panel Pro",
+}
 
 DATA_SCHEMA_MANUAL = OrderedDict()
 DATA_SCHEMA_MANUAL[vol.Required("host")] = str
 DATA_SCHEMA_MANUAL[vol.Required("port")] = int
 
+OPTIONS_IO_ANY = vol.In(
+    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
+)
+OPTIONS_IO_INPUT_ONLY = vol.In(["Disabled", "Binary Sensor", "Digital Sensor"])
+OPTIONS_IO_OUTPUT_ONLY = vol.In(["Disabled", "Switchable Output"])
 
 DATA_SCHEMA_KONN_MODEL = OrderedDict()
-DATA_SCHEMA_KONN_MODEL[vol.Required("1", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("2", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("3", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("4", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("5", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("6", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL[vol.Required("out", default="Disabled")] = vol.In(
-    ["Disabled", "Switchable Output"]
-)
+DATA_SCHEMA_KONN_MODEL[vol.Required("1", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL[vol.Required("2", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL[vol.Required("3", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL[vol.Required("4", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL[vol.Required("5", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL[vol.Required("6", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL[vol.Required("out", default="Disabled")] = OPTIONS_IO_OUTPUT_ONLY
 
 
 DATA_SCHEMA_KONN_MODEL_PRO_1 = OrderedDict()
-DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("1", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("2", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("3", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("4", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("5", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("6", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("7", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("1", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("2", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("3", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("4", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("5", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("6", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL_PRO_1[vol.Required("7", default="Disabled")] = OPTIONS_IO_ANY
 
 DATA_SCHEMA_KONN_MODEL_PRO_2 = OrderedDict()
-DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("8", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("9", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("11", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("12", default="Disabled")] = vol.In(
-    ["Disabled", "Binary Sensor", "Digital Sensor"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("alarm1", default="Disabled")] = vol.In(
-    ["Disabled", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("out1", default="Disabled")] = vol.In(
-    ["Disabled", "Switchable Output"]
-)
-DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("alarm2_out2", default="Disabled")] = vol.In(
-    ["Disabled", "Switchable Output"]
-)
+DATA_SCHEMA_KONN_MODEL_PRO_2[vol.Required("8", default="Disabled")] = OPTIONS_IO_ANY
+DATA_SCHEMA_KONN_MODEL_PRO_2[
+    vol.Required("9", default="Disabled")
+] = OPTIONS_IO_INPUT_ONLY
+DATA_SCHEMA_KONN_MODEL_PRO_2[
+    vol.Required("11", default="Disabled")
+] = OPTIONS_IO_INPUT_ONLY
+DATA_SCHEMA_KONN_MODEL_PRO_2[
+    vol.Required("12", default="Disabled")
+] = OPTIONS_IO_INPUT_ONLY
+DATA_SCHEMA_KONN_MODEL_PRO_2[
+    vol.Required("alarm1", default="Disabled")
+] = OPTIONS_IO_OUTPUT_ONLY
+DATA_SCHEMA_KONN_MODEL_PRO_2[
+    vol.Required("out1", default="Disabled")
+] = OPTIONS_IO_OUTPUT_ONLY
+DATA_SCHEMA_KONN_MODEL_PRO_2[
+    vol.Required("alarm2_out2", default="Disabled")
+] = OPTIONS_IO_OUTPUT_ONLY
 
 
 DATA_SCHEMA_BIN_SENSOR_OPTIONS = OrderedDict()
@@ -154,37 +132,63 @@ DATA_SCHEMA_OPTIONS = {
     "Switch": DATA_SCHEMA_SWITCH_OPTIONS,
 }
 
-BINARY_SENSOR_SCHEMA = vol.All(
+
+def ensure_pin(value):
+    """Check if valid pin and coerce to string."""
+    if value is None:
+        raise vol.Invalid("pin value is None")
+
+    if PIN_TO_ZONE.get(str(value)) is None:
+        raise vol.Invalid("pin not valid")
+
+    return str(value)
+
+
+def ensure_zone(value):
+    """Check if valid zone and coerce to string."""
+    if value is None:
+        raise vol.Invalid("zone value is None")
+
+    if str(value) not in ZONES is None:
+        raise vol.Invalid("zone not valid")
+
+    return str(value)
+
+
+# configuration.yaml schemas (legacy)
+BINARY_SENSOR_SCHEMA_YAML = vol.All(
     vol.Schema(
         {
-            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
-            vol.Required(CONF_ZONE): vol.In(ZONES),
+            vol.Exclusive(CONF_ZONE, "s_zone"): ensure_zone,
+            vol.Exclusive(CONF_PIN, "s_pin"): ensure_pin,
             vol.Required(CONF_TYPE): DEVICE_CLASSES_SCHEMA,
             vol.Optional(CONF_NAME): cv.string,
             vol.Optional(CONF_INVERSE, default=False): cv.boolean,
         }
-    )
+    ),
+    cv.has_at_least_one_key(CONF_PIN, CONF_ZONE),
 )
 
-SENSOR_SCHEMA = vol.All(
+SENSOR_SCHEMA_YAML = vol.All(
     vol.Schema(
         {
-            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
-            vol.Required(CONF_ZONE): vol.In(ZONES),
+            vol.Exclusive(CONF_ZONE, "s_zone"): ensure_zone,
+            vol.Exclusive(CONF_PIN, "s_pin"): ensure_pin,
             vol.Required(CONF_TYPE): vol.All(vol.Lower, vol.In(["dht", "ds18b20"])),
             vol.Optional(CONF_NAME): cv.string,
             vol.Optional(CONF_POLL_INTERVAL, default=3): vol.All(
                 vol.Coerce(int), vol.Range(min=1)
             ),
         }
-    )
+    ),
+    cv.has_at_least_one_key(CONF_PIN, CONF_ZONE),
 )
 
-SWITCH_SCHEMA = vol.All(
+SWITCH_SCHEMA_YAML = vol.All(
     vol.Schema(
         {
-            vol.Exclusive(CONF_ZONE, "s_zone"): vol.In(ZONES),
-            vol.Required(CONF_ZONE): vol.In(ZONES),
+            vol.Exclusive(CONF_ZONE, "s_zone"): ensure_zone,
+            vol.Exclusive(CONF_PIN, "s_pin"): ensure_pin,
             vol.Optional(CONF_NAME): cv.string,
             vol.Optional(CONF_ACTIVATION, default=STATE_HIGH): vol.All(
                 vol.Lower, vol.Any(STATE_HIGH, STATE_LOW)
@@ -193,7 +197,57 @@ SWITCH_SCHEMA = vol.All(
             vol.Optional(CONF_PAUSE): vol.All(vol.Coerce(int), vol.Range(min=10)),
             vol.Optional(CONF_REPEAT): vol.All(vol.Coerce(int), vol.Range(min=-1)),
         }
-    )
+    ),
+    cv.has_at_least_one_key(CONF_PIN, CONF_ZONE),
+)
+
+DEVICE_SCHEMA_YAML = vol.Schema(
+    {
+        vol.Required(CONF_ID): cv.matches_regex("[0-9a-f]{12}"),
+        vol.Optional(CONF_BINARY_SENSORS): vol.All(
+            cv.ensure_list, [BINARY_SENSOR_SCHEMA_YAML]
+        ),
+        vol.Optional(CONF_SENSORS): vol.All(cv.ensure_list, [SENSOR_SCHEMA_YAML]),
+        vol.Optional(CONF_SWITCHES): vol.All(cv.ensure_list, [SWITCH_SCHEMA_YAML]),
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_PORT): cv.port,
+        vol.Optional(CONF_BLINK, default=True): cv.boolean,
+        vol.Optional(CONF_DISCOVERY, default=True): cv.boolean,
+    }
+)
+
+# Config entry schemas
+BINARY_SENSOR_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ZONE, "s_zone"): vol.In(ZONES),
+        vol.Required(CONF_TYPE): DEVICE_CLASSES_SCHEMA,
+        vol.Optional(CONF_NAME): cv.string,
+        vol.Optional(CONF_INVERSE, default=False): cv.boolean,
+    }
+)
+
+SENSOR_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ZONE, "s_zone"): vol.In(ZONES),
+        vol.Required(CONF_TYPE): vol.All(vol.Lower, vol.In(["dht", "ds18b20"])),
+        vol.Optional(CONF_NAME): cv.string,
+        vol.Optional(CONF_POLL_INTERVAL, default=3): vol.All(
+            vol.Coerce(int), vol.Range(min=1)
+        ),
+    }
+)
+
+SWITCH_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ZONE, "s_zone"): vol.In(ZONES),
+        vol.Optional(CONF_NAME): cv.string,
+        vol.Optional(CONF_ACTIVATION, default=STATE_HIGH): vol.All(
+            vol.Lower, vol.Any(STATE_HIGH, STATE_LOW)
+        ),
+        vol.Optional(CONF_MOMENTARY): vol.All(vol.Coerce(int), vol.Range(min=10)),
+        vol.Optional(CONF_PAUSE): vol.All(vol.Coerce(int), vol.Range(min=10)),
+        vol.Optional(CONF_REPEAT): vol.All(vol.Coerce(int), vol.Range(min=-1)),
+    }
 )
 
 DEVICE_SCHEMA = vol.Schema(
@@ -230,7 +284,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for NEW_NAME."""
 
     VERSION = 1
-    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
+    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
 
     # pylint: disable=no-member # https://github.com/PyCQA/pylint/issues/3167
 
@@ -238,7 +292,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the Hue flow."""
         self.host = None
         self.port = None
-        self.model = "Konnected"
+        self.model = KONN_MODEL
         self.device_id = None
 
         self.io_cfg = {}
@@ -262,7 +316,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 # try to obtain the mac address from the device
                 status = await get_status(self.hass, self.host, self.port)
                 self.device_id = status.get("mac").replace(":", "")
-                self.model = status.get("name", "Konnected")
+                self.model = status.get("name", KONN_MODEL)
                 return await self.async_step_io()
 
             except CannotConnect:
@@ -280,7 +334,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         from homeassistant.components.ssdp import ATTR_MANUFACTURER, ATTR_MODEL_NAME
 
-        if discovery_info[ATTR_MANUFACTURER] != KONN_MANUFACTURER:
+        if discovery_info.get(ATTR_MANUFACTURER) != KONN_MANUFACTURER:
             return self.async_abort(reason="not_konn_panel")
 
         if not any(
@@ -342,7 +396,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="io",
                 data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL),
                 description_placeholders={
-                    "model": "Konnected Panel",
+                    "model": KONN_PANEL_MODEL_NAMES[self.model],
                     "host": self.host,
                 },
                 errors=errors,
@@ -354,7 +408,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="io",
                 data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL_PRO_1),
                 description_placeholders={
-                    "model": "Konnected Pro Panel",
+                    "model": KONN_PANEL_MODEL_NAMES[self.model],
                     "host": self.host,
                 },
                 errors=errors,
@@ -380,7 +434,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="io_ext",
                 data_schema=vol.Schema(DATA_SCHEMA_KONN_MODEL_PRO_2),
                 description_placeholders={
-                    "model": "Konnected Pro Panel",
+                    "model": KONN_PANEL_MODEL_NAMES[self.model],
                     "host": self.host,
                 },
                 errors=errors,
@@ -528,7 +582,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         and create an entry. Otherwise we will create a new one.
         """
         try:
-            device_config = DEVICE_SCHEMA(import_info)
+            device_config = DEVICE_SCHEMA_YAML(import_info)
 
         except vol.Invalid as err:
             _LOGGER.error(
@@ -536,6 +590,23 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return self.async_abort(reason="unknown")
 
+        # swap out pin for zones in a io config
+        def pins_to_zones(config):
+            for zone in config:
+                if zone.get(CONF_PIN):
+                    zone[CONF_ZONE] = PIN_TO_ZONE[zone[CONF_PIN]]
+                    del zone[CONF_PIN]
+
+        if device_config.get(CONF_BINARY_SENSORS):
+            pins_to_zones(device_config[CONF_BINARY_SENSORS])
+
+        if device_config.get(CONF_SENSORS):
+            pins_to_zones(device_config[CONF_SENSORS])
+
+        if device_config.get(CONF_SWITCHES):
+            pins_to_zones(device_config[CONF_SWITCHES])
+
+        device_config = DEVICE_SCHEMA(device_config)
         device_id = device_config[CONF_ID]
         host = device_config.get(CONF_HOST)
 
@@ -553,7 +624,6 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     for entry_id in same_panel_entries
                 ]
             )
-
         return self.async_create_entry(
-            title=self.model + " Alarm Panel", data=device_config,
+            title=KONN_PANEL_MODEL_NAMES[self.model], data=device_config,
         )

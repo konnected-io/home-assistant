@@ -10,6 +10,7 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_ID,
     CONF_NAME,
+    CONF_PIN,
     CONF_PORT,
     CONF_SENSORS,
     CONF_SWITCHES,
@@ -37,9 +38,13 @@ from .const import (
     ENDPOINT_ROOT,
     SIGNAL_SENSOR_UPDATE,
     STATE_LOW,
+    ZONE_TO_PIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+KONN_MODEL = "Konnected"
+KONN_MODEL_PRO = "Konnected Pro"
 
 
 class AlarmPanel:
@@ -79,6 +84,7 @@ class AlarmPanel:
             )
             self.status = await self.client.get_status()
             _LOGGER.info(self.status)
+
             await self.async_update_initial_states()
             await self.async_sync_device_config()
 
@@ -102,7 +108,7 @@ class AlarmPanel:
             identifiers={(DOMAIN, self.device_id)},
             manufacturer="Konnected.io",
             name=self.config_entry.title,
-            model=self.status.get("name", "Konnected"),
+            model=self.config_entry.title,
             sw_version=self.status.get("swVersion"),
         )
 
@@ -191,14 +197,24 @@ class AlarmPanel:
     @callback
     def async_binary_sensor_configuration(self):
         """Return the configuration map for syncing binary sensors."""
-        return [{"zone": p} for p in self.stored_configuration[CONF_BINARY_SENSORS]]
+        return [
+            {CONF_ZONE: p}
+            if self.status.get("model") == KONN_MODEL_PRO
+            else {CONF_PIN: ZONE_TO_PIN[p]}
+            for p in self.stored_configuration[CONF_BINARY_SENSORS]
+        ]
 
     @callback
     def async_actuator_configuration(self):
         """Return the configuration map for syncing actuators."""
         return [
             {
-                "zone": data.get(CONF_ZONE),
+                CONF_ZONE: data[CONF_ZONE],
+                "trigger": (0 if data.get(CONF_ACTIVATION) in [0, STATE_LOW] else 1),
+            }
+            if self.status.get("model") == KONN_MODEL_PRO
+            else {
+                CONF_PIN: ZONE_TO_PIN[data[CONF_ZONE]],
                 "trigger": (0 if data.get(CONF_ACTIVATION) in [0, STATE_LOW] else 1),
             }
             for data in self.stored_configuration[CONF_SWITCHES]
@@ -212,6 +228,11 @@ class AlarmPanel:
                 CONF_ZONE: sensor[CONF_ZONE],
                 CONF_POLL_INTERVAL: sensor[CONF_POLL_INTERVAL],
             }
+            if self.status.get("model") == KONN_MODEL_PRO
+            else {
+                CONF_PIN: ZONE_TO_PIN[sensor[CONF_ZONE]],
+                CONF_POLL_INTERVAL: sensor[CONF_POLL_INTERVAL],
+            }
             for sensor in self.stored_configuration[CONF_SENSORS]
             if sensor[CONF_TYPE] == "dht"
         ]
@@ -220,7 +241,9 @@ class AlarmPanel:
     def async_ds18b20_sensor_configuration(self):
         """Return the configuration map for syncing DS18B20 sensors."""
         return [
-            {"zone": sensor[CONF_ZONE]}
+            {CONF_ZONE: sensor[CONF_ZONE]}
+            if self.status.get("model") == KONN_MODEL_PRO
+            else {CONF_PIN: ZONE_TO_PIN[sensor[CONF_ZONE]]}
             for sensor in self.stored_configuration[CONF_SENSORS]
             if sensor[CONF_TYPE] == "ds18b20"
         ]

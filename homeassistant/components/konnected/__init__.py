@@ -18,6 +18,7 @@ from homeassistant.const import (
     CONF_BINARY_SENSORS,
     CONF_DEVICES,
     CONF_ID,
+    CONF_PIN,
     CONF_SENSORS,
     CONF_SWITCHES,
     CONF_ZONE,
@@ -33,14 +34,16 @@ from homeassistant.helpers import storage, config_validation as cv
 
 from .config_flow import (
     configured_devices,
-    DEVICE_SCHEMA,
+    DEVICE_SCHEMA_YAML,
 )  # Loading the config flow file will register the flow
 from .const import (
     CONF_ACTIVATION,
     CONF_API_HOST,
     DOMAIN,
+    PIN_TO_ZONE,
     STATE_HIGH,
     UPDATE_ENDPOINT,
+    ZONE_TO_PIN,
 )
 from .errors import CannotConnect
 from .handlers import HANDLERS
@@ -58,7 +61,7 @@ CONFIG_SCHEMA = vol.Schema(
             {
                 vol.Required(CONF_ACCESS_TOKEN): cv.string,
                 vol.Optional(CONF_API_HOST): vol.Url(),
-                vol.Optional(CONF_DEVICES): [DEVICE_SCHEMA],
+                vol.Optional(CONF_DEVICES): [DEVICE_SCHEMA_YAML],
             }
         )
     },
@@ -180,10 +183,58 @@ class KonnectedView(HomeAssistantView):
             return 1 if state == STATE_ON else 0
         return 0 if state == STATE_ON else 1
 
+    async def update_sensor(self, request: Request, device_id) -> Response:
+        """Process a put or post."""
+        hass = request.app["hass"]
+        data = hass.data[DOMAIN]
+
+        auth = request.headers.get(AUTHORIZATION, None)
+        if auth is None or not hmac.compare_digest(f"Bearer {self.auth_token}", auth):
+            return self.json_message("unauthorized", status_code=HTTP_UNAUTHORIZED)
+
+        try:  # Konnected 2.2.0 and above supports JSON payloads
+            payload = await request.json()
+        except json.decoder.JSONDecodeError:
+            _LOGGER.error(
+                (
+                    "Your Konnected device software may be out of "
+                    "date. Visit https://help.konnected.io for "
+                    "updating instructions."
+                )
+            )
+
+        device = data[CONF_DEVICES].get(device_id)
+        if device is None:
+            return self.json_message(
+                "unregistered device", status_code=HTTP_BAD_REQUEST
+            )
+
+        try:
+            zone_num = str(payload.get(CONF_ZONE) or PIN_TO_ZONE[payload[CONF_PIN]])
+            zone_data = device[CONF_BINARY_SENSORS].get(zone_num) or next(
+                (s for s in device[CONF_SENSORS] if s[CONF_ZONE] == zone_num), None
+            )
+        except KeyError:
+            zone_data = None
+
+        if zone_data is None:
+            return self.json_message(
+                "unregistered sensor/actuator", status_code=HTTP_BAD_REQUEST
+            )
+
+        zone_data["device_id"] = device_id
+
+        for attr in ["state", "temp", "humi", "addr"]:
+            value = payload.get(attr)
+            handler = HANDLERS.get(attr)
+            if value is not None and handler:
+                hass.async_create_task(handler(hass, zone_data, payload))
+
+        return self.json_message("ok")
+
     async def get(self, request: Request, device_id) -> Response:
         """Return the current binary state of a switch."""
         hass = request.app["hass"]
-        zone_num = str(request.query.get("zone"))
         data = hass.data[DOMAIN]
 
         device = data[CONF_DEVICES].get(device_id)
@@ -193,6 +244,9 @@ class KonnectedView(HomeAssistantView):
             )
 
         try:
+            zone_num = str(
+                request.query.get(CONF_ZONE) or PIN_TO_ZONE[request.query[CONF_PIN]]
+            )
             zone = next(
                 filter(
                     lambda switch: switch[CONF_ZONE] == zone_num, device[CONF_SWITCHES]
@@ -200,121 +254,45 @@ class KonnectedView(HomeAssistantView):
             )
         except StopIteration:
             zone = None
+        except KeyError:
+            zone = None
+            zone_num = None
 
         if not zone:
             return self.json_message(
-                format("Switch on zone {} not configured", zone_num),
+                "Switch on zone or pin {} not configured".format(
+                    request.query.get(CONF_ZONE)
+                    or request.query.get(CONF_PIN, "unknown")
+                ),
                 status_code=HTTP_NOT_FOUND,
             )
 
+        resp = {}
+        if request.query.get(CONF_ZONE):
+            resp.update({CONF_ZONE: zone_num})
+        else:
+            resp.update({CONF_PIN: ZONE_TO_PIN[zone_num]})
+
         # Make sure entity is setup
         if zone.get(ATTR_ENTITY_ID):
-            return self.json(
+            resp.update(
                 {
-                    "zone": zone_num,
                     "state": self.binary_value(
                         hass.states.get(zone.get(ATTR_ENTITY_ID)).state,
                         zone[CONF_ACTIVATION],
                     ),
                 }
             )
+            return self.json(resp)
 
         _LOGGER.warning("Konnected entity not yet setup, returning default")
-        return self.json(
-            {
-                "zone": zone_num,
-                "state": self.binary_value(STATE_OFF, zone[CONF_ACTIVATION]),
-            }
-        )
+        resp.update({"state": self.binary_value(STATE_OFF, zone[CONF_ACTIVATION])})
+        return self.json(resp)
 
     async def put(self, request: Request, device_id) -> Response:
         """Receive a sensor update via PUT request and async set state."""
-        hass = request.app["hass"]
-        data = hass.data[DOMAIN]
-
-        try:  # Konnected 2.2.0 and above supports JSON payloads
-            payload = await request.json()
-            zone_num = str(payload["zone"])
-        except json.decoder.JSONDecodeError:
-            _LOGGER.error(
-                (
-                    "Your Konnected device software may be out of "
-                    "date. Visit https://help.konnected.io for "
-                    "updating instructions."
-                )
-            )
-
-        auth = request.headers.get(AUTHORIZATION, None)
-        if not hmac.compare_digest(f"Bearer {self.auth_token}", auth):
-            return self.json_message("unauthorized", status_code=HTTP_UNAUTHORIZED)
-
-        device = data[CONF_DEVICES].get(device_id)
-        if device is None:
-            return self.json_message(
-                "unregistered device", status_code=HTTP_BAD_REQUEST
-            )
-
-        zone_data = device[CONF_BINARY_SENSORS].get(zone_num) or next(
-            (s for s in device[CONF_SENSORS] if s[CONF_ZONE] == zone_num), None
-        )
-
-        if zone_data is None:
-            return self.json_message(
-                "unregistered sensor/actuator", status_code=HTTP_BAD_REQUEST
-            )
-
-        zone_data["device_id"] = device_id
-
-        for attr in ["state", "temp", "humi", "addr"]:
-            value = payload.get(attr)
-            handler = HANDLERS.get(attr)
-            if value is not None and handler:
-                hass.async_create_task(handler(hass, zone_data, payload))
-
-        return self.json_message("ok")
+        return await self.update_sensor(request, device_id)
 
     async def post(self, request: Request, device_id) -> Response:
         """Receive a sensor update via POST request and async set state."""
-        hass = request.app["hass"]
-        data = hass.data[DOMAIN]
-
-        try:  # Konnected 2.2.0 and above supports JSON payloads
-            payload = await request.json()
-            zone_num = str(payload["zone"])
-        except json.decoder.JSONDecodeError:
-            _LOGGER.error(
-                (
-                    "Your Konnected device software may be out of "
-                    "date. Visit https://help.konnected.io for "
-                    "updating instructions."
-                )
-            )
-
-        auth = request.headers.get(AUTHORIZATION, None)
-        if not hmac.compare_digest(f"Bearer {self.auth_token}", auth):
-            return self.json_message("unauthorized", status_code=HTTP_UNAUTHORIZED)
-
-        device = data[CONF_DEVICES].get(device_id)
-        if device is None:
-            return self.json_message(
-                "unregistered device", status_code=HTTP_BAD_REQUEST
-            )
-
-        zone_data = device[CONF_BINARY_SENSORS].get(zone_num) or next(
-            (s for s in device[CONF_SENSORS] if s[CONF_ZONE] == zone_num), None
-        )
-
-        if zone_data is None:
-            return self.json_message(
-                "unregistered sensor/actuator", status_code=HTTP_BAD_REQUEST
-            )
-
-        zone_data["device_id"] = device_id
-
-        for attr in ["state", "temp", "humi", "addr"]:
-            value = payload.get(attr)
-            handler = HANDLERS.get(attr)
-            if value is not None and handler:
-                hass.async_create_task(handler(hass, zone_data, payload))
-
-        return self.json_message("ok")
+        return await self.update_sensor(request, device_id)
