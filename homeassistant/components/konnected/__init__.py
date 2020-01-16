@@ -10,8 +10,9 @@ from aiohttp.hdrs import AUTHORIZATION
 from aiohttp.web import Request, Response
 import voluptuous as vol
 
-from homeassistant.components.http import HomeAssistantView
 from homeassistant import config_entries
+from homeassistant.components.http import HomeAssistantView
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     CONF_ACCESS_TOKEN,
@@ -25,17 +26,16 @@ from homeassistant.const import (
     HTTP_BAD_REQUEST,
     HTTP_NOT_FOUND,
     HTTP_UNAUTHORIZED,
-    STATE_ON,
     STATE_OFF,
+    STATE_ON,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import storage, config_validation as cv
+from homeassistant.helpers import config_validation as cv, storage
 
-from .config_flow import (
-    configured_devices,
+from .config_flow import (  # Loading the config flow file will register the flow
     DEVICE_SCHEMA_YAML,
-)  # Loading the config flow file will register the flow
+    configured_devices,
+)
 from .const import (
     CONF_ACTIVATION,
     CONF_API_HOST,
@@ -243,6 +243,8 @@ class KonnectedView(HomeAssistantView):
                 "Device " + device_id + " not configured", status_code=HTTP_NOT_FOUND
             )
 
+        # Our data model is based on zone ids but we convert from/to pin ids
+        # based on whether they are specified in the request
         try:
             zone_num = str(
                 request.query.get(CONF_ZONE) or PIN_TO_ZONE[request.query[CONF_PIN]]

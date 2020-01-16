@@ -4,7 +4,7 @@
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/konnected",
   "requirements": [
-    "konnected==1.0.0"
+    "konnected==1.1.0"
   ],
   "ssdp": [
     {

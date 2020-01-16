@@ -1,5 +1,6 @@
 """Tests for Konnected Alarm Panel config flow."""
 from unittest.mock import patch
+
 from homeassistant.components.konnected import config_flow
 
 from tests.common import MockConfigEntry, mock_coro
@@ -288,10 +289,9 @@ async def test_ssdp(hass):
 
         result = await flow.async_step_ssdp(
             {
-                "host": "1.2.3.4",
-                "port": "1234",
+                "ssdp_location": "http://1.2.3.4:1234/Device.xml",
                 "manufacturer": config_flow.KONN_MANUFACTURER,
-                "model_name": config_flow.KONN_MODEL,
+                "modelName": config_flow.KONN_MODEL,
             }
         )
 
@@ -325,10 +325,9 @@ async def test_ssdp_pro(hass):
 
         result = await flow.async_step_ssdp(
             {
-                "host": "1.2.3.4",
-                "port": "1234",
+                "ssdp_location": "http://1.2.3.4:1234/Device.xml",
                 "manufacturer": config_flow.KONN_MANUFACTURER,
-                "model_name": config_flow.KONN_MODEL_PRO,
+                "modelName": config_flow.KONN_MODEL_PRO,
             }
         )
 
@@ -361,10 +360,9 @@ async def test_import_cannot_connect(hass):
 
         result = await flow.async_step_ssdp(
             {
-                "host": "1.2.3.4",
-                "port": "1234",
+                "ssdp_location": "http://1.2.3.4:1234/Device.xml",
                 "manufacturer": config_flow.KONN_MANUFACTURER,
-                "model_name": config_flow.KONN_MODEL_PRO,
+                "modelName": config_flow.KONN_MODEL_PRO,
             }
         )
         result = await flow.async_step_import({"host": "0.0.0.0", "id": "112233445566"})
@@ -383,10 +381,9 @@ async def test_ssdp_already_configured(hass):
 
     result = await flow.async_step_ssdp(
         {
-            "host": "0.0.0.0",
-            "port": "1234",
+            "ssdp_location": "http://0.0.0.0:1234/Device.xml",
             "manufacturer": config_flow.KONN_MANUFACTURER,
-            "model_name": config_flow.KONN_MODEL_PRO,
+            "modelName": config_flow.KONN_MODEL_PRO,
         }
     )
 
@@ -446,10 +443,9 @@ async def test_ssdp_host_update(hass):
 
         result = await flow.async_step_ssdp(
             {
-                "host": "1.1.1.1",
-                "port": "1234",
+                "ssdp_location": "http://1.1.1.1:1234/Device.xml",
                 "manufacturer": config_flow.KONN_MANUFACTURER,
-                "model_name": config_flow.KONN_MODEL_PRO,
+                "modelName": config_flow.KONN_MODEL_PRO,
             }
         )
 

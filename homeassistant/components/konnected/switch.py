@@ -5,8 +5,8 @@ from homeassistant.const import (
     ATTR_STATE,
     CONF_DEVICES,
     CONF_NAME,
-    CONF_ZONE,
     CONF_SWITCHES,
+    CONF_ZONE,
 )
 from homeassistant.helpers.entity import ToggleEntity
 
@@ -73,10 +73,10 @@ class KonnectedSwitch(ToggleEntity):
         return self._state
 
     @property
-    def client(self):
+    def panel(self):
         """Return the Konnected HTTP client."""
         device_data = self.hass.data[KONNECTED_DOMAIN][CONF_DEVICES][self._device_id]
-        return device_data.get("panel") and device_data.get("panel").client
+        return device_data.get("panel")
 
     @property
     def device_info(self):
@@ -87,7 +87,7 @@ class KonnectedSwitch(ToggleEntity):
 
     async def async_turn_on(self, **kwargs):
         """Send a command to turn on the switch."""
-        resp = await self.client.put_device(
+        resp = await self.panel.update_switch(
             self._zone_num,
             int(self._activation == STATE_HIGH),
             self._momentary,
@@ -104,7 +104,7 @@ class KonnectedSwitch(ToggleEntity):
 
     async def async_turn_off(self, **kwargs):
         """Send a command to turn off the switch."""
-        resp = await self.client.put_device(
+        resp = await self.panel.update_switch(
             self._zone_num, int(self._activation == STATE_LOW)
         )
 

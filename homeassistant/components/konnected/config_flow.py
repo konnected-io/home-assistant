@@ -3,6 +3,7 @@ import asyncio
 from collections import OrderedDict
 import copy
 import logging
+from urllib.parse import urlparse
 
 import voluptuous as vol
 from voluptuous.humanize import humanize_error
@@ -291,7 +292,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     # pylint: disable=no-member # https://github.com/PyCQA/pylint/issues/3167
 
     def __init__(self):
-        """Initialize the Hue flow."""
+        """Initialize the Konnected flow."""
         self.host = None
         self.port = None
         self.model = KONN_MODEL
@@ -334,20 +335,37 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         This flow is triggered by the SSDP component. It will check if the
         host is already configured and delegate to the import step if not.
         """
-        from homeassistant.components.ssdp import ATTR_UPNP_MANUFACTURER
+        from homeassistant.components.ssdp import (
+            ATTR_UPNP_MANUFACTURER,
+            ATTR_UPNP_MODEL_NAME,
+        )
 
-        if discovery_info.get(ATTR_UPNP_MANUFACTURER) != KONN_MANUFACTURER:
-            return self.async_abort(reason="not_konn_panel")
+        _LOGGER.info(discovery_info)
 
-        if not any(
-            name in discovery_info.get(ATTR_KONN_UPNP_MODEL_NAME, "")
-            for name in KONN_PANEL_MODEL_NAMES
-        ):
-            return self.async_abort(reason="not_konn_panel")
+        try:
+            if discovery_info[ATTR_UPNP_MANUFACTURER] != KONN_MANUFACTURER:
+                return self.async_abort(reason="not_konn_panel")
 
-        self.model = discovery_info[ATTR_KONN_UPNP_MODEL_NAME]
-        self.host = self.context["host"] = discovery_info.get("host")
-        self.port = discovery_info.get("port")
+            if not any(
+                name in discovery_info[ATTR_UPNP_MODEL_NAME]
+                for name in KONN_PANEL_MODEL_NAMES
+            ):
+                _LOGGER.warning(
+                    "Discovered unrecognized Konnected device %s",
+                    discovery_info.get(ATTR_UPNP_MODEL_NAME, "Unknown"),
+                )
+                return self.async_abort(reason="not_konn_panel")
+
+            # extract host/port from ssdp_location
+            netloc = urlparse(discovery_info["ssdp_location"]).netloc.split(":")
+            self.host = self.context["host"] = netloc[0]
+            self.port = netloc[1]
+            self.model = discovery_info[ATTR_UPNP_MODEL_NAME]
+
+        except KeyError:
+            _LOGGER.error("Malformed Konnected SSDP info")
+            return self.async_abort(reason="unknown")
+
         if any(
             self.host == flow["context"].get("host")
             for flow in self._async_in_progress()
@@ -364,10 +382,11 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 .get("mac")
                 .replace(":", "")
             )
-            if not self.device_id:
-                return self.async_abort(reason="cannot_connect")
 
         except CannotConnect:
+            return self.async_abort(reason="cannot_connect")
+
+        if not self.device_id:
             return self.async_abort(reason="cannot_connect")
 
         # if this device exists but the host is different we will utilize it's cfg

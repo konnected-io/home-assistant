@@ -1,4 +1,5 @@
 """Support for Konnected devices."""
+import asyncio
 import logging
 
 from homeassistant.const import (
@@ -21,7 +22,6 @@ from homeassistant.core import callback
 from homeassistant.helpers import aiohttp_client, device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-from .errors import CannotConnect
 from .const import (
     CONF_ACTIVATION,
     CONF_API_HOST,
@@ -40,11 +40,18 @@ from .const import (
     STATE_LOW,
     ZONE_TO_PIN,
 )
+from .errors import CannotConnect
 
 _LOGGER = logging.getLogger(__name__)
 
 KONN_MODEL = "Konnected"
 KONN_MODEL_PRO = "Konnected Pro"
+
+# Indicate how each unit is controlled (pin or zone)
+KONN_API_VERSIONS = {
+    KONN_MODEL: CONF_PIN,
+    KONN_MODEL_PRO: CONF_ZONE,
+}
 
 
 class AlarmPanel:
@@ -61,6 +68,7 @@ class AlarmPanel:
         self.port = self.config.get(CONF_PORT)
         self.client = None
         self.status = None
+        self.api_version = KONN_API_VERSIONS[KONN_MODEL]
 
     @property
     def device_id(self):
@@ -71,6 +79,16 @@ class AlarmPanel:
     def stored_configuration(self):
         """Return the configuration stored in `hass.data` for this device."""
         return self.hass.data[DOMAIN][CONF_DEVICES].get(self.device_id)
+
+    def format_zone(self, zone, other_items=None):
+        """Get zone or pin based dict based on the client type."""
+        payload = {
+            self.api_version: zone
+            if self.api_version == CONF_ZONE
+            else ZONE_TO_PIN[zone]
+        }
+        payload.update(other_items or {})
+        return payload
 
     async def async_connect(self):
         """Connect to and setup a Konnected device."""
@@ -83,9 +101,18 @@ class AlarmPanel:
                 websession=aiohttp_client.async_get_clientsession(self.hass),
             )
             self.status = await self.client.get_status()
+            self.api_version = KONN_API_VERSIONS.get(
+                self.status.get("model", KONN_MODEL), KONN_API_VERSIONS[KONN_MODEL]
+            )
+            _LOGGER.info(
+                "Connected to new %s device", self.status.get("model", "Konnected")
+            )
             _LOGGER.info(self.status)
 
             await self.async_update_initial_states()
+            await asyncio.sleep(
+                0.25
+            )  # brief delay to allow processing of recent status req
             await self.async_sync_device_config()
 
         except self.client.ClientError as err:
@@ -111,6 +138,25 @@ class AlarmPanel:
             model=self.config_entry.title,
             sw_version=self.status.get("swVersion"),
         )
+
+    async def update_switch(self, zone, state, momentary=None, times=None, pause=None):
+        """Update the state of a switchable output."""
+        try:
+            if self.client:
+                if self.api_version == CONF_ZONE:
+                    return await self.client.put_zone(
+                        zone, state, momentary, times, pause,
+                    )
+
+                # device endpoint uses pin numver instead of zone
+                return await self.client.put_device(
+                    ZONE_TO_PIN[zone], state, momentary, times, pause,
+                )
+
+        except self.client.ClientError as err:
+            _LOGGER.warning("Exception trying to update panel: %s", err)
+
+        raise CannotConnect
 
     async def async_save_data(self):
         """Save the device configuration to `hass.data`."""
@@ -198,25 +244,17 @@ class AlarmPanel:
     def async_binary_sensor_configuration(self):
         """Return the configuration map for syncing binary sensors."""
         return [
-            {CONF_ZONE: p}
-            if self.status.get("model") == KONN_MODEL_PRO
-            else {CONF_PIN: ZONE_TO_PIN[p]}
-            for p in self.stored_configuration[CONF_BINARY_SENSORS]
+            self.format_zone(p) for p in self.stored_configuration[CONF_BINARY_SENSORS]
         ]
 
     @callback
     def async_actuator_configuration(self):
         """Return the configuration map for syncing actuators."""
         return [
-            {
-                CONF_ZONE: data[CONF_ZONE],
-                "trigger": (0 if data.get(CONF_ACTIVATION) in [0, STATE_LOW] else 1),
-            }
-            if self.status.get("model") == KONN_MODEL_PRO
-            else {
-                CONF_PIN: ZONE_TO_PIN[data[CONF_ZONE]],
-                "trigger": (0 if data.get(CONF_ACTIVATION) in [0, STATE_LOW] else 1),
-            }
+            self.format_zone(
+                data[CONF_ZONE],
+                {"trigger": (0 if data.get(CONF_ACTIVATION) in [0, STATE_LOW] else 1)},
+            )
             for data in self.stored_configuration[CONF_SWITCHES]
         ]
 
@@ -224,15 +262,9 @@ class AlarmPanel:
     def async_dht_sensor_configuration(self):
         """Return the configuration map for syncing DHT sensors."""
         return [
-            {
-                CONF_ZONE: sensor[CONF_ZONE],
-                CONF_POLL_INTERVAL: sensor[CONF_POLL_INTERVAL],
-            }
-            if self.status.get("model") == KONN_MODEL_PRO
-            else {
-                CONF_PIN: ZONE_TO_PIN[sensor[CONF_ZONE]],
-                CONF_POLL_INTERVAL: sensor[CONF_POLL_INTERVAL],
-            }
+            self.format_zone(
+                sensor[CONF_ZONE], {CONF_POLL_INTERVAL: sensor[CONF_POLL_INTERVAL]}
+            )
             for sensor in self.stored_configuration[CONF_SENSORS]
             if sensor[CONF_TYPE] == "dht"
         ]
@@ -241,9 +273,7 @@ class AlarmPanel:
     def async_ds18b20_sensor_configuration(self):
         """Return the configuration map for syncing DS18B20 sensors."""
         return [
-            {CONF_ZONE: sensor[CONF_ZONE]}
-            if self.status.get("model") == KONN_MODEL_PRO
-            else {CONF_PIN: ZONE_TO_PIN[sensor[CONF_ZONE]]}
+            self.format_zone(sensor[CONF_ZONE])
             for sensor in self.stored_configuration[CONF_SENSORS]
             if sensor[CONF_TYPE] == "ds18b20"
         ]
@@ -252,7 +282,7 @@ class AlarmPanel:
         """Update the initial state of each sensor from status poll."""
         for sensor_data in self.status.get("sensors"):
             sensor_config = self.stored_configuration[CONF_BINARY_SENSORS].get(
-                sensor_data.get(CONF_ZONE), {}
+                sensor_data.get(CONF_ZONE, sensor_data.get(CONF_PIN)), {}
             )
             entity_id = sensor_config.get(ATTR_ENTITY_ID)
 
@@ -293,7 +323,10 @@ class AlarmPanel:
             settings = {}
 
         return {
-            "sensors": [{"zone": s[CONF_ZONE]} for s in self.status.get("sensors")],
+            "sensors": [
+                {self.api_version: s[self.api_version]}
+                for s in self.status.get("sensors")
+            ],
             "actuators": self.status.get("actuators"),
             "dht_sensors": self.status.get(CONF_DHT_SENSORS),
             "ds18b20_sensors": self.status.get(CONF_DS18B20_SENSORS),

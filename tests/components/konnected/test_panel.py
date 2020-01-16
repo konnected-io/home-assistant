@@ -1,7 +1,8 @@
 """Test Konnected setup process."""
 from unittest.mock import patch
 
-from homeassistant.components.konnected import panel, config_flow
+from homeassistant.components.konnected import config_flow, panel
+
 from tests.common import MockConfigEntry, mock_coro
 
 
@@ -53,6 +54,7 @@ async def test_create_and_setup(hass):
             return mock_panel
 
         mock_panel.side_effect = mock_constructor
+        mock_panel.ClientError = config_flow.CannotConnect
         mock_panel.get_status.return_value = mock_coro(
             {
                 "hwVersion": "2.3.0",
@@ -70,10 +72,18 @@ async def test_create_and_setup(hass):
             }
         )
         mock_panel.put_settings.return_value = mock_coro()
+        mock_panel.put_device.return_value = mock_coro()
+        mock_panel.put_zone.return_value = mock_coro()
 
         device = panel.AlarmPanel(hass, entry)
         await device.async_save_data()
         await device.async_connect()
+        await device.update_switch("1", 0)
+
+    # confirm the correct api is used
+    # pylint: disable=no-member
+    assert device.client.put_device.call_count == 1
+    assert device.client.put_zone.call_count == 0
 
     # confirm the settings are sent to the panel
     # pylint: disable=no-member
@@ -200,6 +210,7 @@ async def test_create_and_setup_pro(hass):
             return mock_panel
 
         mock_panel.side_effect = mock_constructor
+        mock_panel.ClientError = config_flow.CannotConnect
         mock_panel.get_status.return_value = mock_coro(
             {
                 "hwVersion": "2.3.0",
@@ -218,10 +229,18 @@ async def test_create_and_setup_pro(hass):
             }
         )
         mock_panel.put_settings.return_value = mock_coro()
+        mock_panel.put_device.return_value = mock_coro()
+        mock_panel.put_zone.return_value = mock_coro()
 
         device = panel.AlarmPanel(hass, entry)
         await device.async_save_data()
         await device.async_connect()
+        await device.update_switch("2", 1)
+
+    # confirm the correct api is used
+    # pylint: disable=no-member
+    assert device.client.put_device.call_count == 0
+    assert device.client.put_zone.call_count == 1
 
     # confirm the settings are sent to the panel
     # pylint: disable=no-member
