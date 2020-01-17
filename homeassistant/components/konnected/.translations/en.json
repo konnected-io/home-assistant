@@ -43,7 +43,7 @@
             "options_binary": {
                 "data": {
                     "inverse": "Invert the open/close state",
-                    "name": "Name",
+                    "name": "Name (optional)",
                     "type": "Binary Sensor Type"
                 },
                 "description": "Please select the options for the binary sensor attached to {zone}",
@@ -51,8 +51,8 @@
             },
             "options_digital": {
                 "data": {
-                    "name": "Name",
-                    "poll_interval": "Poll Interval (minutes)",
+                    "name": "Name (optional)",
+                    "poll_interval": "Poll Interval (minutes) (optional)",
                     "type": "Sensor Type"
                 },
                 "description": "Please select the options for the digital sensor attached to {zone}",
@@ -60,16 +60,21 @@
             },
             "options_switch": {
                 "data": {
-                    "activation": "Output state when switch is on",
-                    "momentary": "Duration of momentary pulse (ms)",
-                    "name": "Name",
-                    "pause": "Duration of pause between pulses (ms)",
-                    "repeat": "Number of times to repeat momentary pulse (-1 for infinite)"
+                    "activation": "Output when on",
+                    "momentary": "Pulse duration (ms) (optional)",
+                    "name": "Name (optional)",
+                    "pause": "Pause between pulses (ms) (optional)",
+                    "repeat": "Times to repeat (-1=infinite) (optional)"
                 },
                 "description": "Please select the output options for {zone}",
                 "title": "Configure Switchable Output"
             },
             "user": {
+                "data": {
+                    "host": "Konnected device IP address",
+                    "inverse": "Invert the open/close state",
+                    "port": "Konnected device port"
+                },
                 "description": "Please enter the host information for your Konnected Panel.",
                 "title": "Discover Konnected Device"
             }

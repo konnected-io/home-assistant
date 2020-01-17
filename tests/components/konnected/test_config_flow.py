@@ -2,6 +2,7 @@
 from unittest.mock import patch
 
 from homeassistant.components.konnected import config_flow
+from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_SSDP
 
 from tests.common import MockConfigEntry, mock_coro
 
@@ -358,17 +359,77 @@ async def test_import_cannot_connect(hass):
         mock_panel.get_status.side_effect = config_flow.CannotConnect
         mock_panel.ClientError = config_flow.CannotConnect
 
-        result = await flow.async_step_ssdp(
-            {
+        result = await flow.async_step_import(
+            {"host": "0.0.0.0", "port": 1234, "id": "112233445566"}
+        )
+
+    # Create the entry even if panel isn't available - we'll update the host once we know it
+    assert result["type"] == "create_entry"
+
+
+async def test_import_no_host_user_finish(hass):
+    """Test importing a panel with no host info."""
+    flow = config_flow.KonnectedFlowHandler()
+    flow.hass = hass
+    flow.context = {}
+
+    with patch("konnected.Client") as mock_panel:
+
+        def mock_constructor(host, port, websession):
+            """Fake the panel constructor."""
+            mock_panel.host = host
+            mock_panel.port = port
+            return mock_panel
+
+        mock_panel.side_effect = mock_constructor
+        mock_panel.get_status.return_value = mock_coro(
+            {"mac": "11:22:33:44:55:66", "name": "Konnected Pro"}
+        )
+
+        result = await flow.async_step_import({"id": "112233445566"})
+        assert result["type"] == "form"
+        assert result["step_id"] == "user"
+
+        # wait for user to enter host info to finish
+        result = await flow.async_step_user({"host": "1.1.1.1", "port": 1234})
+
+        assert result["type"] == "create_entry"
+
+
+async def test_import_no_host_ssdp_finish(hass):
+    """Test importing a panel with no host info."""
+    with patch("konnected.Client") as mock_panel:
+
+        def mock_constructor(host, port, websession):
+            """Fake the panel constructor."""
+            mock_panel.host = host
+            mock_panel.port = port
+            return mock_panel
+
+        mock_panel.side_effect = mock_constructor
+        mock_panel.get_status.return_value = mock_coro(
+            {"mac": "11:22:33:44:55:66", "name": "Konnected Pro"}
+        )
+
+        result = await hass.config_entries.flow.async_init(
+            config_flow.DOMAIN,
+            context={"source": SOURCE_IMPORT},
+            data={"id": "112233445566"},
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == "user"
+
+        # second flow started by ssdp should hijack the first
+        result = await hass.config_entries.flow.async_init(
+            config_flow.DOMAIN,
+            context={"source": SOURCE_SSDP},
+            data={
                 "ssdp_location": "http://1.2.3.4:1234/Device.xml",
                 "manufacturer": config_flow.KONN_MANUFACTURER,
                 "modelName": config_flow.KONN_MODEL_PRO,
-            }
+            },
         )
-        result = await flow.async_step_import({"host": "0.0.0.0", "id": "112233445566"})
-
-    # Create the entry even if bridge isn't available - we'll update the host once we know it
-    assert result["type"] == "create_entry"
+        assert result["type"] == "create_entry"
 
 
 async def test_ssdp_already_configured(hass):

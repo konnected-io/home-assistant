@@ -94,6 +94,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
             CONF_ACCESS_TOKEN: access_token,
             CONF_API_HOST: cfg.get(CONF_API_HOST),
             CONF_DEVICES: {},
+            "config_data": {},
         }
 
     # save off the access token

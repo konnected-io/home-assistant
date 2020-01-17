@@ -58,8 +58,8 @@ KONN_PANEL_MODEL_NAMES = {
 }
 
 DATA_SCHEMA_MANUAL = OrderedDict()
-DATA_SCHEMA_MANUAL[vol.Required("host")] = str
-DATA_SCHEMA_MANUAL[vol.Required("port")] = int
+DATA_SCHEMA_MANUAL[vol.Required(CONF_HOST)] = str
+DATA_SCHEMA_MANUAL[vol.Required(CONF_PORT)] = int
 
 OPTIONS_IO_ANY = vol.In(
     ["Disabled", "Binary Sensor", "Digital Sensor", "Switchable Output"]
@@ -124,7 +124,9 @@ DATA_SCHEMA_SENSOR_OPTIONS[vol.Optional("poll_interval")] = vol.All(
 
 DATA_SCHEMA_SWITCH_OPTIONS = OrderedDict()
 DATA_SCHEMA_SWITCH_OPTIONS[vol.Optional("name")] = str
-DATA_SCHEMA_SWITCH_OPTIONS[vol.Optional("activation")] = vol.In(["low", "high"])
+DATA_SCHEMA_SWITCH_OPTIONS[vol.Optional("activation", default="high")] = vol.In(
+    ["low", "high"]
+)
 DATA_SCHEMA_SWITCH_OPTIONS[vol.Optional("momentary")] = int
 DATA_SCHEMA_SWITCH_OPTIONS[vol.Optional("pause")] = int
 DATA_SCHEMA_SWITCH_OPTIONS[vol.Optional("repeat")] = int
@@ -261,8 +263,8 @@ DEVICE_SCHEMA = vol.Schema(
         ),
         vol.Optional(CONF_SENSORS): vol.All(cv.ensure_list, [SENSOR_SCHEMA]),
         vol.Optional(CONF_SWITCHES): vol.All(cv.ensure_list, [SWITCH_SCHEMA]),
-        vol.Optional(CONF_HOST): cv.string,
-        vol.Optional(CONF_PORT): cv.port,
+        vol.Required(CONF_HOST): cv.string,
+        vol.Required(CONF_PORT): cv.port,
         vol.Optional(CONF_BLINK, default=True): cv.boolean,
         vol.Optional(CONF_DISCOVERY, default=True): cv.boolean,
     }
@@ -298,28 +300,110 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.model = KONN_MODEL
         self.device_id = None
 
+        # data above builds the config entry
+        # data below maintains state between steps
         self.io_cfg = {}
         self.binary_sensors = []
         self.sensors = []
         self.switches = []
         self.active_cfg = None
 
+    @property
+    def cached_config(self):
+        """Retrieve cached config for device."""
+        if self.hass.data.get(DOMAIN) and self.hass.data[DOMAIN].get("config_data"):
+            return self.hass.data[DOMAIN]["config_data"].get(self.device_id)
+        return None
+
+    @callback
+    def async_cache_config(self, config):
+        """Cache the device config for shared usage."""
+        if DOMAIN not in self.hass.data:
+            self.hass.data[DOMAIN] = {}
+            self.hass.data[DOMAIN]["config_data"] = {}
+
+        self.hass.data[DOMAIN]["config_data"][self.device_id] = config
+
     async def async_step_init(self, user_input=None):
         """Needed in order to not require re-translation of strings."""
         return await self.async_step_user(user_input)
 
+    async def async_step_import(self, import_info):
+        """Import a configuration.yaml config.
+
+        This flow is triggered by `async_setup` for configured panels.
+        Triggered for any panel that does not have a config entry
+        yet (based on device_id).  If the cfg entry can't be made
+        we'll cache the data in hass.data[DOMAIN]["config_data"] for
+        other flows to reference.
+        """
+        _LOGGER.debug(import_info)
+        try:
+            device_config = DEVICE_SCHEMA_YAML(import_info)
+
+        except vol.Invalid as err:
+            _LOGGER.error(
+                "Cannot import config..%s", humanize_error(import_info, err),
+            )
+            return self.async_abort(reason="unknown")
+
+        # swap out pin for zones in a io config
+        def pins_to_zones(config):
+            for zone in config:
+                if zone.get(CONF_PIN):
+                    zone[CONF_ZONE] = PIN_TO_ZONE[zone[CONF_PIN]]
+                    del zone[CONF_PIN]
+
+        if device_config.get(CONF_BINARY_SENSORS):
+            pins_to_zones(device_config[CONF_BINARY_SENSORS])
+
+        if device_config.get(CONF_SENSORS):
+            pins_to_zones(device_config[CONF_SENSORS])
+
+        if device_config.get(CONF_SWITCHES):
+            pins_to_zones(device_config[CONF_SWITCHES])
+
+        self.device_id = self.context["device_id"] = device_config["id"]
+        try:
+            self.host = device_config[CONF_HOST]
+            self.port = device_config[CONF_PORT]
+
+        except KeyError:
+            # cache config and wait for user input or discovery to provide host info
+            self.async_cache_config(device_config)
+            return await self.async_step_user()
+
+        # create the config entry
+        return await self.async_create_or_update_entry(device_config)
+
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
-        if user_input is not None:
+        if user_input:
             try:
-                self.host = user_input["host"]
-                self.port = user_input["port"]
+                self.host = user_input[CONF_HOST]
+                self.port = user_input[CONF_PORT]
 
                 # try to obtain the mac address from the device
                 status = await get_status(self.hass, self.host, self.port)
                 self.device_id = status.get("mac").replace(":", "")
                 self.model = status.get("name", KONN_MODEL)
+
+                # finish if we have a cached data set (partial config imported earlier)
+                if self.cached_config:
+                    config = copy.deepcopy(self.cached_config)
+                    try:
+                        config[CONF_HOST] = self.host
+                        config[CONF_PORT] = self.port
+                        return await self.async_create_or_update_entry(
+                            DEVICE_SCHEMA(config)
+                        )
+
+                    except vol.Invalid as err:
+                        _LOGGER.warning(
+                            "Invalid cached config..%s", humanize_error(config, err),
+                        )
+
                 return await self.async_step_io()
 
             except CannotConnect:
@@ -333,14 +417,14 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle a discovered konnected panel.
 
         This flow is triggered by the SSDP component. It will check if the
-        host is already configured and delegate to the import step if not.
+        device is already configured and attempt to finish the config if not.
         """
         from homeassistant.components.ssdp import (
             ATTR_UPNP_MANUFACTURER,
             ATTR_UPNP_MODEL_NAME,
         )
 
-        _LOGGER.info(discovery_info)
+        _LOGGER.debug(discovery_info)
 
         try:
             if discovery_info[ATTR_UPNP_MANUFACTURER] != KONN_MANUFACTURER:
@@ -375,9 +459,12 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if self.host in configured_hosts(self.hass):
             return self.async_abort(reason="already_configured")
 
+        # brief delay to allow processing of recent status req
+        await asyncio.sleep(0.1)
+
         # try to obtain the mac address from the device
         try:
-            self.device_id = (
+            self.device_id = self.context["device_id"] = (
                 (await get_status(self.hass, self.host, self.port))
                 .get("mac")
                 .replace(":", "")
@@ -389,16 +476,31 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if not self.device_id:
             return self.async_abort(reason="cannot_connect")
 
+        # look for a partially configured instance of this device and hijack it
+        for flow in self.hass.config_entries.flow.async_progress():
+            if flow["handler"] == self.handler and flow["flow_id"] != self.flow_id:
+                if (
+                    self.device_id == flow["context"].get("device_id")
+                    and self.cached_config
+                ):
+                    # steal the config data and abort other flow
+                    # only would happen if the other flow was imported config.yaml w/o host info
+                    _LOGGER.info("Konnected partially imported - completing cfg entry")
+                    config = copy.deepcopy(self.cached_config)
+                    config[CONF_HOST] = self.host
+                    config[CONF_PORT] = self.port
+                    self.hass.config_entries.flow.async_abort(flow["flow_id"])
+                    return await self.async_create_or_update_entry(config)
+
         # if this device exists but the host is different we will utilize it's cfg
         for entry in self.hass.config_entries.async_entries(DOMAIN):
             if self.device_id == entry.data["id"]:
                 _LOGGER.info("Konnected host changed - creating replacement cfg entry")
                 config = copy.deepcopy(entry.data)
-                config["host"] = self.host
-                config["port"] = self.port
-                return await self.async_step_import(config)
+                config[CONF_HOST] = self.host
+                config[CONF_PORT] = self.port
+                return await self.async_create_or_update_entry(config)
 
-        _LOGGER.info(discovery_info)
         return await self.async_step_io()
 
     async def async_step_io(self, user_input=None):
@@ -579,7 +681,7 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         # Build a config mimicking configuration.yaml
-        return await self.async_step_import(
+        return await self.async_create_or_update_entry(
             {
                 "host": self.host,
                 "port": self.port,
@@ -590,52 +692,27 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-    async def async_step_import(self, import_info):
-        """Import a new panel as a config entry.
+    async def async_create_or_update_entry(self, device_config):
+        """Create or update a config entry based on the config flow info.
 
-        This flow is triggered by `async_setup` for both configured and
-        discovered panels. Triggered for any panel that does not have a
-        config entry yet (based on host).
-
-        This flow is also triggered by `async_step_ssdp`.
-
-        If an existing config file is found, we will validate the info
-        and create an entry. Otherwise we will create a new one.
+        If an existing config entry is found, we will validate the info
+        and replace the entry. Otherwise we will create a new one.
         """
         try:
-            device_config = DEVICE_SCHEMA_YAML(import_info)
+            device_config = DEVICE_SCHEMA(device_config)
 
         except vol.Invalid as err:
             _LOGGER.error(
-                "Cannot import config..%s", humanize_error(import_info, err),
+                "Invalid device config..%s", humanize_error(device_config, err),
             )
             return self.async_abort(reason="unknown")
-
-        # swap out pin for zones in a io config
-        def pins_to_zones(config):
-            for zone in config:
-                if zone.get(CONF_PIN):
-                    zone[CONF_ZONE] = PIN_TO_ZONE[zone[CONF_PIN]]
-                    del zone[CONF_PIN]
-
-        if device_config.get(CONF_BINARY_SENSORS):
-            pins_to_zones(device_config[CONF_BINARY_SENSORS])
-
-        if device_config.get(CONF_SENSORS):
-            pins_to_zones(device_config[CONF_SENSORS])
-
-        if device_config.get(CONF_SWITCHES):
-            pins_to_zones(device_config[CONF_SWITCHES])
-
-        device_config = DEVICE_SCHEMA(device_config)
-        device_id = device_config[CONF_ID]
-        host = device_config.get(CONF_HOST)
 
         # Remove all other entries of panels with same ID or host
         same_panel_entries = [
             entry.entry_id
             for entry in self.hass.config_entries.async_entries(DOMAIN)
-            if entry.data[CONF_ID] == device_id or entry.data[CONF_HOST] == host
+            if entry.data[CONF_ID] == device_config[CONF_ID]
+            or entry.data[CONF_HOST] == device_config[CONF_HOST]
         ]
 
         if same_panel_entries:
@@ -645,6 +722,11 @@ class KonnectedFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     for entry_id in same_panel_entries
                 ]
             )
+
+        # remove any cached data and make the entry
+        if self.cached_config:
+            self.hass.data[DOMAIN]["config_data"].pop(self.device_id, None)
+
         return self.async_create_entry(
             title=KONN_PANEL_MODEL_NAMES[self.model], data=device_config,
         )

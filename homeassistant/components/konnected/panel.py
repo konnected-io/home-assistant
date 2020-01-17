@@ -110,9 +110,8 @@ class AlarmPanel:
             _LOGGER.info(self.status)
 
             await self.async_update_initial_states()
-            await asyncio.sleep(
-                0.25
-            )  # brief delay to allow processing of recent status req
+            # brief delay to allow processing of recent status req
+            await asyncio.sleep(0.1)
             await self.async_sync_device_config()
 
         except self.client.ClientError as err:

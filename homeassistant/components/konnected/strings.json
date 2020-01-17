@@ -4,7 +4,12 @@
     "step": {
       "user": {
         "title": "Discover Konnected Device",
-        "description": "Please enter the host information for your Konnected Panel."
+        "description": "Please enter the host information for your Konnected Panel.",
+        "data": {
+          "host": "Konnected device IP address",
+          "port": "Konnected device port",
+          "inverse": "Invert the open/close state"
+        }
       },
       "io": {
         "title": "Configure I/O",
@@ -39,7 +44,7 @@
         "description": "Please select the options for the binary sensor attached to {zone}",
         "data": {
           "type": "Binary Sensor Type",
-          "name": "Name",
+          "name": "Name (optional)",
           "inverse": "Invert the open/close state"
         }
       },
@@ -48,19 +53,19 @@
         "description": "Please select the options for the digital sensor attached to {zone}",
         "data": {
           "type": "Sensor Type",
-          "name": "Name",
-          "poll_interval": "Poll Interval (minutes)"
+          "name": "Name (optional)",
+          "poll_interval": "Poll Interval (minutes) (optional)"
         }
       },
       "options_switch": {
         "title": "Configure Switchable Output",
         "description": "Please select the output options for {zone}",
         "data": {
-          "name": "Name",
-          "activation": "Output state when switch is on",
-          "momentary": "Duration of momentary pulse (ms)",
-          "pause": "Duration of pause between pulses (ms)",
-          "repeat": "Number of times to repeat momentary pulse (-1 for infinite)"
+          "name": "Name (optional)",
+          "activation": "Output when on",
+          "momentary": "Pulse duration (ms) (optional)",
+          "pause": "Pause between pulses (ms) (optional)",
+          "repeat": "Times to repeat (-1=infinite) (optional)"
         }
       }
     },
